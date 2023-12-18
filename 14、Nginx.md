@@ -1,7 +1,9 @@
 ---
 typora-root-url: 图例
 ---
-
+```
+njcb1234
+```
 
 
 # Nginx 基础
