@@ -8,7 +8,8 @@ class aaa{
 ```
 # ORM模型
 
-由于JDBC的缺陷，ResultSet和POJO的映射是一个比较大的难题。实际工作中基本上不使用JDBC.
+由于 JDBC 的缺陷，ResultSet 和 POJO 的映射是一个比较大的难题。实际工作中基本上不使用 JDBC
+
 
 ORM(Object Relational Mapping)：主要是用来解决数据库表和POJO之间的映射关系。
 
