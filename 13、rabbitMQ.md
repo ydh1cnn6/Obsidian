@@ -55,12 +55,14 @@ typora-root-url: 图例资料
 
 ![01.02.点对点消息](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171838497.png)
 
+![01.02.点对点消息](/C:/Users/%E5%A4%A7%E6%B5%B7/AppData/Roaming/Typora/typora-user-images/image-20240219094015254.png)
+
 ### 3.2 发布-订阅消息系统
 
 一对多，消费者消费数据之后不会清除消息。
 消息生产者（发布）将消息发布到 topic 中，同时有多个消息消费者（订阅）消费该消息。和点对点方式不同，发布到 topic 的消息会被所有订阅者消费。有两种方式，一种是队列主动推送模式、一种是消费者主动拉取模式。
 
-![01.02.点对点消息](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171843748.png)
+![01.03.发布订阅模式](https://raw.githubusercontent.com/ydh1cnn6/pic/master/01.03.发布订阅模式.png)
 
 主动推送方式：生产者一生产消息，就发送给费者。问题：1：要维护订阅的消费者   2：消费者消费能力问题。
 
@@ -80,7 +82,7 @@ typora-root-url: 图例资料
 
 6. MetaQ/RocketMQ 纯java实现，发布/订阅信息系统，支持本地事务和XA分布式事务。
 
-   ![消息队列](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171844146.png)
+   ![image-20240219094422411](https://raw.githubusercontent.com/ydh1cnn6/pic/master/消息队列)
 
 ## 5. 常见使用场景
 
@@ -320,7 +322,7 @@ http://192.168.33.10:15672
 
 ## 1.RabbitMQ基本结构
 
-![03.01.基本结构](/03.01.基本结构.png)
+![03.01.基本结构](https://raw.githubusercontent.com/ydh1cnn6/pic/master/03.01.基本结构.png)
 
 组成部分说明如下：
 
@@ -586,7 +588,7 @@ rabbitmq支持以下集中工作模式：
 
 ### Work queues
 
-![04.消息队列-workqueuel](/04.消息队列-workqueuel.png)
+![04.消息队列-workqueuel](https://raw.githubusercontent.com/ydh1cnn6/pic/master/04.消息队列-workqueuel.png)
 
 消息产生者将消息放入队列消费者可以有多个,消费者1,消费者2,同时监听同一个队列,消息被消费?C1 C2共同争抢当前的消息队列内容,谁先拿到谁负责消费消息(隐患,高并发情况下,默认会产生某一个消息被多个消费者共同使用,可以设置一个开关(syncronize,与同步锁的性能不一样) 保证一条消息只能被一个消费者使用)。队列中的数据过多时会被丢弃。提高消息处理的速度，避免消息的队列
 
@@ -656,7 +658,7 @@ Topic exchange（主题交换机）
 
 Headers exchange（头交换机）
 
-![04.消息队列-Publish-Subscribe](/04.消息队列-Publish-Subscribe.png)
+![04.消息队列-Publish-Subscribe](https://raw.githubusercontent.com/ydh1cnn6/pic/master/04.消息队列-Publish-Subscribe.png)
 
 X代表交换机rabbitMQ内部组件，erlang 消息产生者是代码完成，代码的执行效率不高，消息产生者将消息放入交换机,交换机发布订阅把消息发送到所有消息队列中,对应消息队列的消费者拿到消息进行消费。
 
@@ -757,7 +759,7 @@ Routing模式要求队列在绑定交换机时要指定routingkey，消息会转
 发布者发布消息时，指定消息的RoutingKey
 Exchange将消息路由到BindingKey与消息RountingKey一致的队列。
 
-![04.消息队列-routing](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171845251.png)
+![04.消息队列-routing](https://raw.githubusercontent.com/ydh1cnn6/pic/master/04.消息队列-routing.png)
 
 消息生产者将消息发送给交换机按照路由判断,路由是字符串(info) 当前产生的消息携带路由字符(对象的方法),交换机根据路由的key,只能匹配上路由key对应的消息队列,对应的消费者才能消费消息;
 
@@ -821,9 +823,7 @@ Queue与exchange指定的BindingKey时，可以使用通配符：
 
  ‘#’：代指零个或者多个单词 a.#.b  ==>a.x.b    ,a.x.y.z.b
 
-
-
-![04.消息队列-topic](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171845732.png)
+![04.消息队列-topic](https://raw.githubusercontent.com/ydh1cnn6/pic/master/04.消息队列-topic.png)
 
 消费者代码
 

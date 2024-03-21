@@ -432,7 +432,7 @@ public class UserService {
 
     @Resource
     RestTemplate restTemplate;
-
+ 
     public Book searchBook(String isbn){
         System.out.println("用户查找图书");
         String url = host + "/book/" + isbn;
@@ -851,7 +851,7 @@ public class UserController {
 
 ## 修改主启动类
 
-增加@EnableFeignClient注解
+增加@EnableFeignClients注解
 
 ```java
 @SpringBootApplication
@@ -1042,6 +1042,8 @@ public class Base01ConsumerApplication {
 
 ## OpenFeign方式
 
+[OpenFeign设置Hystrix详解](https://blog.csdn.net/2301_79354153/article/details/134642873)
+
 ### 开启Hystrix
 
 ```yaml
@@ -1169,7 +1171,7 @@ management:
 
 # 网关Gateway
 
-Gateway是Spring Cloud的子项目，Spring2.X提供的，Spring1.X用的是zuul（已经停更，进入维护期），提供简单有效的API路由管理方式。
+Gateway 是 Spring Clo·1111ud 的子项目，Spring2.X 提供的，Spring1.X 用的是 zuul（已经停更，进入维护期），提供简单有效的 API 路由管理方式。
 
 Gateway作为zuul的替代品，是Springcloud生态中的网管。是基于WebFlux，高效能的Reactor模式。
 
@@ -1364,7 +1366,7 @@ public class MyTestGatewayFilterFactory extends AbstractGatewayFilterFactory {
 
 ```yaml
 spring:
-  application:
+  application:	
     name: base03-gateway
   cloud:
     gateway:
@@ -1474,8 +1476,8 @@ java -jar sentinel-dashboard-1.8.2.jar --server.port=8081
 ## 流量控制
 
 <img src="/流控规则.png" alt="流控规则" style="zoom:80%;" />
-![Uploading file...4mlyc]()
 
+![流控规则.png](https://raw.githubusercontent.com/ydh1cnn6/pic/master/流控规则.png)
 
 资源名：唯一名称，默认为请求路径
 

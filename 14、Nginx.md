@@ -193,7 +193,7 @@ http://nginx.org/en/linux_packages.html#RHEL-CentOS
 
 ​		nginx 是通过信号来控制，比如关闭，重启等去控制 nginx 进程。Nginx 信号是属于 nginx 进程间的通信的一种机制，比如 master 主进程控制多个 worker 子进程，也是通过信号控制的，如下图。
 
-![工作模式](/工作模式.png)
+![image-20240221125546160](/C:/Users/%E5%A4%A7%E6%B5%B7/AppData/Roaming/Typora/typora-user-images/image-20240221125546160.png)
 
 ## 2. 信号量
 
@@ -225,6 +225,8 @@ Kill -QUIT 4851
 
 
 ![配置文件结构](/配置文件结构.png)
+
+![配置文件结构](/C:/Users/%E5%A4%A7%E6%B5%B7/AppData/Roaming/Typora/typora-user-images/image-20240221135134611.png)
 
 ## 1. Main 全局配置
 

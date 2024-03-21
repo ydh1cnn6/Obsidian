@@ -43,7 +43,7 @@ Factory模式
 
 ## 体系结构
 
-![01.体系架构](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171832935.png)
+![01.体系架构](https://raw.githubusercontent.com/ydh1cnn6/pic/master/image-20240219133926721.png)
 
 ## 常用API
 
@@ -824,9 +824,7 @@ public class QuartzConfig {
 
 **sql语句位置**：jar包位置
 
-![02sql语句位置](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171833855.png)
-
-
+![image-20240219134118015](https://raw.githubusercontent.com/ydh1cnn6/pic/master/02sql语句位置)
 
 #### application.yml配置文件
 

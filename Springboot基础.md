@@ -44,7 +44,9 @@ Springboot简化架构的依赖和配置过程，但是在web开发成面，仍�
 
 https://start.spring.io/
 
-进行项目的相关配置
+![官网方式配置](https://raw.githubusercontent.com/ydh1cnn6/pic/master/image-20240220164528686.png)
+
+
 
 ## 使用手工创建
 
@@ -502,6 +504,7 @@ spring:
 app:
   upload:
     direct: d:/upload
+     
 ```
 
 ### 前端
@@ -990,7 +993,7 @@ SPI(Service Provider Interface),服务提供接口，是JDK内置的一种服务
 
 案例：空调的遥控器能做的事情：空调型号，开关处理，调节温度，变更模式（制冷，制热、通风）
 
-![SPI机制](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171307371.png)
+![SPI机制](https://raw.githubusercontent.com/ydh1cnn6/pic/master/SPI机制.png)
 
 
 
@@ -1337,6 +1340,8 @@ public class SpringApplicationRunner implements ApplicationRunner {
 compiler.automake.allow.when.app.running 打勾
 
 ![image-20230525135359144](C:\Users\mameiping\AppData\Roaming\Typora\typora-user-images\image-20230525135359144.png)
+
+
 
 
 

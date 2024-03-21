@@ -984,7 +984,7 @@ scoped 属性表示当前设置的css相关样式，只针对school组件
 
 ## 兄弟组件之间如何传递参数
 
-![02.兄弟参数传递](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171313502.png)
+![02.兄弟参数传递](https://raw.githubusercontent.com/ydh1cnn6/pic/master/02.兄弟参数传递.png)
 
 ```
 
@@ -1533,7 +1533,7 @@ Vuex是用来管理Vue.js当中的状态。比较适合中大型项目。
 
 ## 组成
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171313301.png" alt="03.vuex的组件" style="zoom:80%;" />
+<img src="/03.vuex的组件.png" alt="03.vuex的组件" style="zoom:80%;" />
 
 ## 安装
 
