@@ -73,7 +73,7 @@ https://npm.taobao.org/mirrors/git-for-windows/
 
 - 安装TortoiseGit中文语言包
 
-![04.TortoiseGit中文语言包](/04.TortoiseGit中文语言包.png)
+![04.TortoiseGit中文语言包](04.TortoiseGit中文语言包.png.md)
 
 # 4. Git的使用
 
@@ -87,7 +87,7 @@ https://npm.taobao.org/mirrors/git-for-windows/
 
 方法二：在repo1文件夹中右击鼠标--》【Git在这里创建版本库】
 
-![04.创建版本库.方法二](/04.创建版本库.方法二.png)
+![04.创建版本库.方法二](04.创建版本库.方法二.png.md)
 
 创建好的目录
 
@@ -101,7 +101,7 @@ https://npm.taobao.org/mirrors/git-for-windows/
 
 创建文件HelloWorld.txt，右击，点击【TortoiseGit】==》【添加】。
 
-![04.上传文件](/04.上传文件.png)
+![04.上传文件](04.上传文件.png.md)
 
 点击【确定】，重启下电脑，HelloWorld.txt会有个小加号。此时加入的是暂存区。
 
@@ -210,7 +210,7 @@ Git和其他版本控制系统如SVN的一个不同之处就是暂存区的概�
 
 - 用户设置
 
-  ![09.设置公钥01.setting](/09.设置公钥01.setting.png)
+  ![09.设置公钥01.setting](09.设置公钥01.setting.png.md)
 
   
 

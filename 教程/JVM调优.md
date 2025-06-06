@@ -141,7 +141,7 @@ ClassLoader有几个原则，分别是：
 
 - 沙箱安全机制：自己写的java.lang.String.class类不会被加载，这样便可以防止核心API库不会被随意篡改。保证了运行的安全性，防止不可信类扮演可信任的类。
 
-  ![06.string](/06.string.png)
+  ![06.string](06.string.png.md)
 
 # 三、垃圾回收
 
