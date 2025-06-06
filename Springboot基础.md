@@ -864,7 +864,7 @@ spring:
       max-active: 8
       min-idle: 2
       max-wait: 1000
-      max-evictable-idle-time-millis: 2000000 #长连接时间（半个小时~7个小时之间）
+      max-evictable-idle-time-millis: 2000000 #长连接时间（半个小时~7个小时之间） 
 mybatis:
   mapper-locations: classpath:mappers/*.xml
   type-aliases-package: net.wanho.base03mybatis.entity

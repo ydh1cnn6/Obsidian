@@ -187,7 +187,7 @@ global session（老版本有的，新版本是没有作用域）
 
 ### 基本流程
 
-![02.bean生命周期](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308231019441.png)
+![02.bean生命周期](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-05-2002.bean生命周期.png)
 
 ### BeanPostProcessor
 
