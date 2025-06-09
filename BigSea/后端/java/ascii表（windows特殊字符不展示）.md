@@ -1,0 +1,5 @@
+### 输入ascii
+atl + 小键盘数字键的“十进制编号”
+
+[ASCII 表 | 菜鸟工具](https://www.jyshare.com/front-end/6318/) 或 [ASCII码对照表，ASCII码一览表（非常详细） - C语言中文网](https://c.biancheng.net/c/ascii/)
+

@@ -1,0 +1,4 @@
+<font style="color:rgb(82, 82, 82);background-color:rgb(247, 247, 247);">$ npm install </font><font style="color:rgb(45, 183, 245);">view</font><font style="color:#01B2BC;background-color:rgb(247, 247, 247);">-ui-plus</font><font style="color:#81DFE4;background-color:rgb(247, 247, 247);"> </font><font style="color:rgb(82, 82, 82);background-color:rgb(247, 247, 247);">--save	</font><font style="color:rgb(81, 90, 110);">基于 Vue.js 3 的一套 UI 组件库</font>
+
+<font style="color:rgb(82, 82, 82);background-color:rgb(247, 247, 247);">$ npm install </font><font style="color:rgb(45, 183, 245);">view</font><font style="color:rgb(82, 82, 82);background-color:rgb(247, 247, 247);">-</font><font style="color:rgb(45, 183, 245);">design</font><font style="color:rgb(82, 82, 82);background-color:rgb(247, 247, 247);"> --</font><font style="color:rgb(233, 105, 0);">save	</font><font style="color:rgb(81, 90, 110);">支持 Vue.js 2.x</font>
+
