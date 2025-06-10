@@ -17,12 +17,12 @@ MyBatis-Plus 是一个 Mybatis 增强版工具，在 MyBatis 上扩充了其他�
 ### 使用插件
 
 使用 IDEA 安装一个 mybatis-plus 插件
+![01.插件.png](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-06-1001.插件.png)
 
-![01.插件](/01.插件.png)
 
 ### 增加依赖
 
-```
+```xml
 <dependency>
     <groupId>org.projectlombok</groupId>
     <artifactId>lombok</artifactId>
