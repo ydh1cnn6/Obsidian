@@ -45,7 +45,7 @@ The Elastic Stack是一个项目工具集，包含ElasticSearch、Kinaba，Beats
 window版本解压即可适用
 
 点击/bin/elasticsearch.bat
-![image-20230314142728249.png](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-06-10-image-20230314142728249.png)
+![image-20230314142728249.png|600](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-06-10-image-20230314142728249.png)
 
 
 
@@ -53,10 +53,12 @@ window版本解压即可适用
 9300: ES的集群之间维持心跳的端口
 
 9200：客户端连接的端口
-![image-20230314142944859.png](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-06-10-image-20230314142944859.png)
+![image-20230314142944859.png|600](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-06-10-image-20230314142944859.png)
 
 # 核心概念
 
+
+![image.png|600](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-06-11-202506110925166.png)
 
 
 ## 索引（index）
