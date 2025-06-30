@@ -11,6 +11,11 @@ Ctrl + A：回到行首
 Ctrl + E： 跳到行尾
 
 
+# SecureCRT 配置单词间跳转
+“options” --> 选择 “session options” -->“mapped key” --> 点击 “Map a Key”设置快捷键-发送字符串
+“\033\142”，表示向左跳过一个单词  
+“\033\146” 表示向右跳过一个单词
+[SecureCRT 配置单词间跳转_securecrt 光标向左移动一个单词-CSDN博客](https://blog.csdn.net/D1179869625/article/details/130749531)
 
 
 
