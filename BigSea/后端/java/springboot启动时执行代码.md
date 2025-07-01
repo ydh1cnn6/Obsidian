@@ -7,8 +7,6 @@
 
 Spring Boot 提供了多种组件生命周期回调接口或注解，可在应用启动的不同阶段触发代码执行。针对“启动时执行 HTTP 请求”的需求，常用以下方案：
 
----
-
 #### ​​1. 使用`CommandLineRunner` 或 `ApplicationRunner`​​
 
 这两个接口的作用是在 ​**​Spring 应用上下文完全初始化后、主线程结束前​**​ 执行代码（此时嵌入式 Servlet 容器已启动）。适合需要在应用启动完成后立即执行的场景（如调用外部服务初始化数据）。
@@ -21,7 +19,7 @@ Spring Boot 提供了多种组件生命周期回调接口或注解，可在应�
 
 ​**​示例代码（使用 `CommandLineRunner`）：​**​
 
-```java FOLD
+```java fold FOLD
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.stereotype.Component;
@@ -61,9 +59,9 @@ public class ContextRefreshedListener implements ApplicationListener<ContextRefr
 
 - ​**​步骤 1​**​：定义一个 Bean 实现 `ApplicationListener<ContextRefreshedEvent>`。
 - ​**​步骤 2​**​：在 `onApplicationEvent` 方法中编写 HTTP 请求逻辑。
-
+- 
 ​**​示例代码：​**​
-```java
+```java fold fold
 import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import org.springframework.web.client.RestTemplate;
@@ -101,7 +99,7 @@ public class InitService {
 
 ​**​示例代码：​**​
 
-```java
+```java fold fold
 import org.springframework.stereotype.Component;
 import javax.annotation.PostConstruct;
 import org.springframework.web.client.RestTemplate;
@@ -133,15 +131,16 @@ public class InitService {
 
 Spring Boot 推荐使用以下客户端发送 HTTP 请求（需添加对应依赖）：
 
-|客户端|特点|适用场景|
-|---|---|---|
-|`RestTemplate`|同步阻塞，简单易用（已标记为过时，推荐迁移至 `WebClient`）|传统同步请求|
-|`WebClient`|非阻塞响应式，支持异步/流式（Spring WebFlux 核心组件，也可用于 Spring MVC）|高并发、异步请求|
-|`OkHttp`|轻量高效，支持连接池和缓存|需要细粒度控制请求的场景|
+| 客户端            | 特点                                                  | 适用场景         |
+| -------------- | --------------------------------------------------- | ------------ |
+| `RestTemplate` | 同步阻塞，简单易用（已标记为过时，推荐迁移至 `WebClient`）                 | 传统同步请求       |
+| `WebClient`    | 非阻塞响应式，支持异步/流式（Spring WebFlux 核心组件，也可用于 Spring MVC） | 高并发、异步请求     |
+| `OkHttp`       | 轻量高效，支持连接池和缓存                                       | 需要细粒度控制请求的场景 |
+|                |                                                     |              |
 
 #### ​**​示例：使用 `WebClient`（响应式客户端）​**​
 
-```java
+```java fold
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -166,7 +165,7 @@ public class WebClientExample {
 ```
 ​**​注意：​**​ 使用 `WebClient` 需添加依赖：
 
-```xml
+```xml 
 <dependency>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-webflux</artifactId>
@@ -183,7 +182,7 @@ public class WebClientExample {
     
 3. ​**​异常处理​**​：启动时的 HTTP 请求失败可能导致应用无法启动（默认行为）。可通过 `try-catch` 捕获异常并记录日志，避免阻塞启动：
     
-```java
+```java fold
 @Override
 public void run(String... args) {
 	try {
