@@ -1,4 +1,4 @@
-### 0、我用的
+### 〇、我用的
 	自定义类实现 `ApplicationListener<ContextRefreshedEvent>`，重写onApplicationEvent 方法。
 
 在 Spring Boot 应用启动时自动执行 HTTP 请求（例如调用外部接口、初始化数据或预加载资源），可以通过利用 Spring 的​**​生命周期回调机制​**​实现。以下是具体实现方式和场景说明：
@@ -9,7 +9,7 @@ Spring Boot 提供了多种组件生命周期回调接口或注解，可在应�
 
 ---
 
-#### ​**​1. 使用`CommandLineRunner` 或 `ApplicationRunner`​​
+#### ​​1. 使用`CommandLineRunner` 或 `ApplicationRunner`​​
 
 这两个接口的作用是在 ​**​Spring 应用上下文完全初始化后、主线程结束前​**​ 执行代码（此时嵌入式 Servlet 容器已启动）。适合需要在应用启动完成后立即执行的场景（如调用外部服务初始化数据）。
 
