@@ -92,7 +92,7 @@ Lambda 的简写形式，语法为 `类名/对象::方法名`。
 
 ##### 1. 四种类型的方法引用
 
-```
+```java flod
 // 静态方法
 Function<String, Integer> parser = Integer::parseInt;
 
