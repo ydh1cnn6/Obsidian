@@ -31,12 +31,12 @@
  User user
 ```
 
-### **<font style="color:rgb(79, 79, 79);">@RequestHeader：</font>**
+### **<font style="color:rgb(79, 79, 79);">@RequestHeader</font>**
 ```java
 @RequestHeader String token,@RequestHeader String uui
 ```
 
-### **<font style="color:rgb(79, 79, 79);">HttpServletRequest </font>****<font style="color:rgb(243, 59, 69);">：</font>**
+### **<font style="color:rgb(79, 79, 79);">HttpServletRequest </font>****<font style="color:rgb(243, 59, 69);">：</font>
 ```java
 HttpServletRequest request
     Stringid= request.getParameter("id");//方式1
