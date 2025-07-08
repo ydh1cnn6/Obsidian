@@ -12,4 +12,13 @@ name: 闫大海
 
 
 
-
+4、默认只开启了 health, 所以 404
+[localhost:6104/actuator/info](http://localhost:6104/actuator/info)
+```yml 开启所有端点
+#开启所有端点  
+management:  
+  endpoints:  
+    web:  
+      exposure:  
+        include: "*"
+```
