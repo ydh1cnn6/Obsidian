@@ -26,6 +26,7 @@ management:
 
 # Gateway 
 也要注册到注册中心
+主要功能：路由、断言、过滤
 ```yml title="多模块配置"
 spring:  
   application:  
@@ -42,3 +43,21 @@ spring:
           predicates:  
             - Path=/order/**
 ```
+## 断言
+[Spring Cloud Gateway-断言谓词](https://docs.spring.io/spring-cloud-gateway/docs/3.1.9/reference/html/#the-after-route-predicate-factory)
+### After
+After: `After datetime ZonedDateTime`
+### Before
+Before: `Before datetime ZonedDateTime`
+### Between
+`Between datetime1 ZonedDateTime, datetime2 ZonedDateTime`
+### Cookie
+`Cookie name,regexp`
+### Header
+`Header header regexp`
+
+### Header
+
+
+
+## 过滤
