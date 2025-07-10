@@ -25,3 +25,20 @@ management:
 
 
 # Gateway 
+也要注册到注册中心
+```yml title="多模块配置"
+spring:  
+  application:  
+    name: GATEWAY  
+  cloud:  
+    gateway:  
+      routes:  
+        - id: goods-route  
+          uri: lb://GOODS  
+          predicates:  
+            - Path=/goods/**  
+        - id: order-route  
+          uri: lb://ORDER  
+          predicates:  
+            - Path=/order/**
+```
