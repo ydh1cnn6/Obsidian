@@ -1299,7 +1299,7 @@ spring:
             - Path=/book/**  #限制访问的路径
             - After=2021-11-24T11:35:57.557+08:00[Asia/Shanghai]
           filters:
-            - AddRequestHeader=username,xiaoming
+            - AddRequestHeader=use rname,xiaoming
             - RedirectTo=302,http://www.baidu.com
 
       discovery:

@@ -46,18 +46,24 @@ spring:
 ## 断言
 [Spring Cloud Gateway-断言谓词](https://docs.spring.io/spring-cloud-gateway/docs/3.1.9/reference/html/#the-after-route-predicate-factory)
 ### After
-After: `After datetime ZonedDateTime`
+After: `After= datetime ZonedDateTime`
 ### Before
 Before: `Before datetime ZonedDateTime`
 ### Between
-`Between datetime1 ZonedDateTime, datetime2 ZonedDateTime`
+Between: `Between datetime1 ZonedDateTime, datetime2 ZonedDateTime`
 ### Cookie
-`Cookie name,regexp`
+Cookie: `Cookie name,regexp`
 ### Header
-`Header header regexp`
+Header:  `Header header regexp`
 
-### Header
-``
-
+### Host
+Host: ``
+### Method
+Method：`Method=GET,POST`
+### Path
+Path： ``
+### <font color="#ff0000">Query</font>
+Query：``
+### RemoteAddr
 
 ## 过滤
