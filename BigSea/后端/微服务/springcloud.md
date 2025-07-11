@@ -67,3 +67,5 @@ Query：``
 ### RemoteAddr
 
 ## 过滤
+AbstractGatewayFilterFactory
+GlobalFilter
