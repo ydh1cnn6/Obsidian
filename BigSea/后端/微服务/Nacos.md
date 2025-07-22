@@ -1,7 +1,4 @@
 # 版本依赖
-
-^94574d
-
 - 2023. X 分支对应的是 Spring Cloud 2023 与 Spring Boot 3.2. X，最低支持 JDK 17。
 - 2022. X 分支对应的是 Spring Cloud 2022 与 Spring Boot 3.0. X，最低支持 JDK 17。
 - 2021. X 分支对应的是 Spring Cloud 2021 与 Spring Boot 2.6. X，最低支持 JDK 1.8。
@@ -12,6 +9,7 @@
 - 1. X 分支对应的是 Spring Cloud Edgware 与 Spring Boot 1. X，最低支持 JDK 1.7。
 
 # 版本依赖 1
+1111
 - 2023. X 分支对应的是 Spring Cloud 2023 与 Spring Boot 3.2. X，最低支持 JDK 17。
 - 2022. X 分支对应的是 Spring Cloud 2022 与 Spring Boot 3.0. X，最低支持 JDK 17。
 - 2021. X 分支对应的是 Spring Cloud 2021 与 Spring Boot 2.6. X，最低支持 JDK 1.8。
@@ -23,6 +21,8 @@
 
 
 # 版本依赖 2
+2222
+
 - 2023. X 分支对应的是 Spring Cloud 2023 与 Spring Boot 3.2. X，最低支持 JDK 17。
 - 2022. X 分支对应的是 Spring Cloud 2022 与 Spring Boot 3.0. X，最低支持 JDK 17。
 - 2021. X 分支对应的是 Spring Cloud 2021 与 Spring Boot 2.6. X，最低支持 JDK 1.8。
