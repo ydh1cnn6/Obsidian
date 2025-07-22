@@ -97,9 +97,6 @@ public interface Filter {
     <version>2023.0.3.2</version>  
 </dependency>
 ```
->[!tip]
-> [版本依赖关系]( https://github.com/alibaba/spring-cloud-alibaba/blob/2023.x/README-zh.md## 如何构建)
-
  ![Nacos](BigSea/后端/微服务/Nacos.md#版本依赖)
 2、配置文件
 ```yml
@@ -119,3 +116,10 @@ public class NacosGoodsApplication {
 }
 ```
 
+
+
+错误：
+nacos版本错误导致的报错信息：
+![nacos版本错误导致的报错信息](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-07-22-202507221738167.png)
+错误原因：2023.0.3.2，支持Spring Boot 3.2. X，最低支持 JDK 17
+解决方案：降低版本到2021.x.x

@@ -1,4 +1,5 @@
 # 版本依赖
+
 - 2023. X 分支对应的是 Spring Cloud 2023 与 Spring Boot 3.2. X，最低支持 JDK 17。
 - 2022. X 分支对应的是 Spring Cloud 2022 与 Spring Boot 3.0. X，最低支持 JDK 17。
 - 2021. X 分支对应的是 Spring Cloud 2021 与 Spring Boot 2.6. X，最低支持 JDK 1.8。
@@ -7,3 +8,5 @@
 - Greenwich 分支对应的是 Spring Cloud Greenwich 与 Spring Boot 2.1. X，最低支持 JDK 1.8。
 - Finchley 分支对应的是 Spring Cloud Finchley 与 Spring Boot 2.0. X，最低支持 JDK 1.8。
 - 1. X 分支对应的是 Spring Cloud Edgware 与 Spring Boot 1. X，最低支持 JDK 1.7。
+>[!tip]
+> [版本依赖关系]( https://github.com/alibaba/spring-cloud-alibaba/blob/2023.x/README-zh.md## 如何构建)
