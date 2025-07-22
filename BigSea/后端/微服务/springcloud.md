@@ -86,3 +86,39 @@ public interface Filter {
     }  
 }
 ```
+
+
+# Nacos
+1、引入依赖
+```xml
+<dependency>  
+    <groupId>com.alibaba.cloud</groupId>  
+    <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>  
+    <version>2023.0.3.2</version>  
+</dependency>
+```
+>[!tip]
+> [版本依赖关系]( https://github.com/alibaba/spring-cloud-alibaba/blob/2023.x/README-zh.md## 如何构建)
+
+ [[#]]
+ 
+ 
+
+2、配置文件
+```yml
+spring:
+ cloud:  
+  nacos:  
+    discovery:  
+     server-addr: http://169.254.83.107:8848/
+```
+
+3、启动类
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+public class NacosGoodsApplication {
+	.....
+}
+```
+
