@@ -50,3 +50,6 @@ resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean�
 # 集群架构
 1、集群要共用一个数据库存储配置信息，否则要在启动命令加参数 -m。。。
 2、消费者和提供者把集群所有节点列出来，逗号分隔。或者，集群用NGINX代理，节点使用nginx的ip端口+路径（nginx代理nacos的路径）
+
+# 服务降级
+sentinal依赖+指定降级处理类和方法，feith或者resttempl'te调用接口遇到报错，会执行降级处理，比如扔到消息队列，后续做补偿
