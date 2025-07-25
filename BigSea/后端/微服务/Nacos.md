@@ -53,3 +53,8 @@ resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean�
 
 # 服务降级
 sentinal依赖+指定降级处理类和方法，feith或者resttempl'te调用接口遇到报错，会执行降级处理，比如扔到消息队列，后续做补偿
+
+
+
+# 问题合集
+1、
