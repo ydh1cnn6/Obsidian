@@ -12,6 +12,7 @@
 > [版本依赖关系]( https://github.com/alibaba/spring-cloud-alibaba/blob/2023.x/README-zh.md## 如何构建)
 
 # springboot
+
 ## 配置自动刷新
 不能使用@value注解，而要使用@nacosvalue注解，且autorefreshed=true
 ## 注意事项
