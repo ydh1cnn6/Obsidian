@@ -12,3 +12,9 @@
 # markdown教程
 [markdown教程](markdown教程.md)
 
+
+网页搭建构思
+1、转为+nginx代理
+
+2、转为html+serve（用的3000端口），可以再用nginx代理一遍转为80端口
+
