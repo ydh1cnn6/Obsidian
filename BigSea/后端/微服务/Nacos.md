@@ -88,3 +88,40 @@ cd /d "%BIN_DIR%"
 call startup.cmd -m standalone
 ```
 
+## 3、注册到nocos上后，服务调用报错
+**问题描述**：
+	服务在nacos上已经注册上了，通过ip直接调用服务业没有问题，但通过网关或者服务调用服务时就会报错
+	![image.png|500](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-07-28-202507281740522.png)
+**分析过程**：
+	1. 目标服务未注册到Nacos
+	2. Gateway无法从Nacos获取服务实例
+	3. 目标服务虽然注册，但健康状态异常
+	4. 网络问题导致Gateway无法访问目标服务
+	5. 路由配置错误
+	但都没找到，ai提示到了LoadBalancer，结合之前碰到过这个问题（通过一点一点删除debug发现的）
+**根本原因**：
+	LoadBalancer 虽然有了，但可能缺失一下东西，需要引入`spring-cloud-starter-loadbalancer`
+**解决方案**：
+## 4、cloud-alibaba的版本依赖
+**描述**：
+spring-cloud-alibaba的版本依赖，用	`spring-cloud-alibaba-dependencies`
+spring-cloud的版本依赖，用`spring-cloud-dependencies`
+**实现**：
+```xml title="pom.xml" 
+<!--  spring-cloud  -->
+<dependency>
+	<groupId>org.springframework.cloud</groupId>
+	<artifactId>spring-cloud-dependencies</artifactId>
+	<version>${spring-cloud.version}</version>
+	<type>pom</type>
+	<scope>import</scope>
+</dependency>
+<!--  spring-cloud-alibaba  -->
+<dependency>
+	<groupId>com.alibaba.cloud</groupId>
+	<artifactId>spring-cloud-alibaba-dependencies</artifactId>
+	<version>${spring-cloud-alibaba.version}</version>
+	<type>pom</type>
+	<scope>import</scope>
+</dependency>
+```
