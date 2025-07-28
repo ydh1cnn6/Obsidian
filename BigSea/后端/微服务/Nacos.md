@@ -1,3 +1,9 @@
+---
+createDate: 2025-07-28T15:48:00
+updateDate: 2025-07-28T15:50:00
+author: 闫大海
+template triggers: 问题
+---
 # 版本依赖
 
 - 2023.X 分支对应的是 Spring Cloud 2023 与 Spring Boot 3.2. X，最低支持 JDK 17。
@@ -59,3 +65,14 @@ sentinal依赖+指定降级处理类和方法，feith或者resttempl'te调用接
 
 # 问题合集
 Yesterday: <% tp.date.yesterday("YYYY-MM-DD") %>
+
+问题描述：
+分析过程：
+根本原因：
+	通常是由于MySQL 8.0及以上版本的安全机制导致。
+解决方案：
+	方案一：‌修改JDBC连接参数，为MySQL连接URL添加allowPublicKeyRetrieval=true参数
+		方案二：更改 MySQL 用户的认证机制
+
+
+
