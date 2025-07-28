@@ -66,13 +66,25 @@ sentinal依赖+指定降级处理类和方法，feith或者resttempl'te调用接
 # 问题合集
 Yesterday: <% tp.date.yesterday("YYYY-MM-DD") %>
 
-问题描述：
-分析过程：
-根本原因：
+## 1、启动失败
+**问题描述**：
+	<font color="#ff0000">Caused by: com.mysql.cj.exceptions.UnableToConnectException: Public Key Retrieval is not allowed</font>
+**分析过程**：
+	搜索ai
+**根本原因**：
 	通常是由于MySQL 8.0及以上版本的安全机制导致。
-解决方案：
-	方案一：‌修改JDBC连接参数，为MySQL连接URL添加allowPublicKeyRetrieval=true参数
-		方案二：更改 MySQL 用户的认证机制
+**解决方案**：
+	修改JDBC连接参数，为MySQL连接URL添加allowPublicKeyRetrieval=true参数
+## 2、写启动脚本
+**描述**：
+	直接写在项目文件中，执行启动脚本即可直接启动nacos-server
+**实现**：
+```yaml title="start.cmd"
+@echo off
+set "NACOS_DIR=D:\devsoft\nacos-server-2.0.1\nacos"
+set "BIN_DIR=%NACOS_DIR%\bin"
 
-
+cd /d "%BIN_DIR%"
+call startup.cmd -m standalone
+```
 
