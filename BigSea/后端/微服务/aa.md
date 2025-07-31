@@ -1,1 +1,3 @@
- <% tp.date.yesterday("YYYY-MM-DD") %>
+---
+updateDate: 2025-07-31 11:30:23
+---
