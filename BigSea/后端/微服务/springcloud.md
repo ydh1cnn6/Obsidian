@@ -88,9 +88,11 @@ public interface Filter {
 }
 ```
 
-## 网关的负载均衡
+## 网关配置负载均衡
 网关的负载均衡=服务之间调用的负载均衡
 ![image.png|600](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-07-31-202507311450201.png)
+### 1、nacos配置
+nacos的权重，要实现一个类
 
 
 # Nacos

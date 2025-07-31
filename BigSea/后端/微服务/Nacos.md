@@ -50,6 +50,7 @@ shared-configs：多个应用共享
 
 # 负载均衡起作用
 resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean，nacosrule，
+1、nacos页面权重配置
 
 # 就近访问
 通过在消费者中指定集群名实现
