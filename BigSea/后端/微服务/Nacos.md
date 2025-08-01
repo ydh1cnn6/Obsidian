@@ -15,7 +15,7 @@ template triggers: 问题
 - Finchley 分支对应的是 Spring Cloud Finchley 与 Spring Boot 2.0. X，最低支持 JDK 1.8。
 - 1. X 分支对应的是 Spring Cloud Edgware 与 Spring Boot 1. X，最低支持 JDK 1.7。
 >[!tip]
-> [版本依赖关系]( https://github.com/alibaba/spring-cloud-alibaba/blob/2023.x/README-zh.md## 如何构建)
+> [版本依赖关系]( https://github.com/alibaba/spring-cloud-alibaba/blob/2023.x/README-zh.md#如何构建)
 
 # springboot
 
@@ -49,8 +49,14 @@ shared-configs：多个应用共享
 解析文件时按照files-extension解析，不一致时会报错
 
 # 负载均衡起作用
+>[!warning] 注意
+>2021版本以后弃用Ribbon，改为LoadBalancer
+>可以用OpenFeign
+
 resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean，nacosrule，
 1、nacos页面权重配置
+2、注入NacosRule对象
+
 
 # 就近访问
 通过在消费者中指定集群名实现
