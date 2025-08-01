@@ -24,6 +24,8 @@ Springcloud可以开发多个服务
 
 ​	配置中心：config，**Nacos**
 
+>[!tip] IDEA启动微服务
+>[SpringCloud服务批量启动](SpringCloud服务批量启动.md#Idea批量启动)
 
 
 # 入门案例
@@ -32,7 +34,16 @@ Springcloud可以开发多个服务
 
 有另外一个服务（消费者），需要买书时，按照编号查看书的信息。
 
-## 公共模块
+## 公共模块---
+title: spring cloud
+author: BigSea
+email: 2834637197@qq.com
+wather: 🌦   +25°C
+createDate: 2025-06-06 15:13:12
+updateDate: 2025-08-01 11:16:58
+week: 第31周｜星期五
+---
+
 
 创建普通maven工程base00-common，并编写实体类
 
@@ -187,7 +198,8 @@ NetFlix公司一系列开源产品中的其中之一，它的主要作用是服�
 
 客户端：主要包含服务的生产者和服务消费者。服务的提供者要和服务器端维持心跳，来更新它的服务租约。可以将服务器端的注册信息缓存到本地，并周期性的更新服务状态。
 
-![eureka](/eureka.png)
+![eureka.png|600](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-08-01-eureka.png)
+
 
 ### 服务端
 
