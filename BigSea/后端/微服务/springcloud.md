@@ -133,3 +133,11 @@ nacos版本错误导致的报错信息：
 解决方案：降低版本到2021.x.x
 
 
+
+
+# sentinel
+
+1、启动
+`java -jar .\sentinel-dashboard-1.8.2.jar --server.port=8085`
+
+2、
