@@ -57,6 +57,16 @@ resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean�
 1、nacos页面权重配置
 2、注入NacosRule对象
 
+**问题描述**：对同一个服务的两个请求分别配置`@LoadBalanced`和`@LoadBalancerClient(name = "GOODS",configuration = MyLoadBalance.class)`（`MyLoadBalance`设定的是只查某个服务器），实际都走的`MyLoadBalance`
+**分析过程**：
+	AI,未验证
+**根本原因**：
+1. 在Spring Cloud的LoadBalancer机制中，一旦为某个服务配置了自定义负载均衡器，它会应用到该服务的所有客户端调用中，包括RestTemplate和Feign。
+2. @LoadBalancerClient注解配置的负载均衡策略是针对特定服务的全局配置，会影响到所有对该服务的调用
+**解决方案**：
+	测试方案，待测试。
+
+
 
 # 就近访问
 通过在消费者中指定集群名实现
