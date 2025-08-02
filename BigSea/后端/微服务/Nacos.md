@@ -54,9 +54,9 @@ shared-configs：多个应用共享
 >可以用OpenFeign
 
 resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean，nacosrule，
-1、nacos页面权重配置
-2、注入NacosRule对象
 
+
+## 自定义负载均衡-问题一
 **问题描述**：对同一个服务的两个请求分别配置`@LoadBalanced`和`@LoadBalancerClient(name = "GOODS",configuration = MyLoadBalance.class)`（`MyLoadBalance`设定的是只查某个服务器），实际都走的`MyLoadBalance`
 **分析过程**：
 	AI,未验证
@@ -66,7 +66,76 @@ resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean�
 **解决方案**：
 	测试方案，待测试。
 
+## 自定义负载均衡-问题二
+### **问题描述**：
+	只有指定了自定义负载均衡的服务能用，其他服务都不能调用（通过网关或者其他服务调用时，只调用每个服务还是可以的）
+	错误结构：
+### **分析过程**：
+架构：访问goods时只访问6209服务
+![image.png|600](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-08-02-202508021543813.png)
+### **根本原因**：
+	自定义负载均衡策略，只能全部指定，不存在只给单独某个服务加，其他走默认
+### **解决方案**：
+#### 启动类：
+```java title="启动类分别指定服务使用的负载均衡策略"
+@LoadBalancerClients(
+        value = {
+                @LoadBalancerClient(name = "GOODS", configuration = LoadBalancerConfig.class),
+                @LoadBalancerClient(name = "ORDER", configuration = LoadBalancerConfig.class)
+        },
+        defaultConfiguration = LoadBalancerConfig.class
+)
+```
+#### LoadBalancerConfig:
+```java title="为服务配置使用的负载均衡器"
+@Configuration
+public class LoadBalancerConfig {
+    @Bean
+    public ReactorLoadBalancer<ServiceInstance> customLoadBalancer(Environment environment, LoadBalancerClientFactory factory) {
+        String name = environment.getProperty(LoadBalancerClientFactory.PROPERTY_NAME);
+        // 只对GOODS服务使用自定义负载均衡器，其他服务使用默认的轮询负载均衡器
+        if ("GOODS".equals(name)) {
+            return new MyLoadBalance(factory.getLazyProvider(name, ServiceInstanceListSupplier.class), name);
+        } else {
+            // 使用默认的轮询负载均衡器
+            return new RandomLoadBalancer(factory.getLazyProvider(name, ServiceInstanceListSupplier.class), name);
+        }
+    }
+}
+```
+#### MyLoadBalance：
+```java title="实现自定义负载均衡策略"
+public class MyLoadBalance implements ReactorServiceInstanceLoadBalancer {
+    private final String name;
+//    @Resource
+    private ObjectProvider<ServiceInstanceListSupplier> supplierProvider;
+    public <T> MyLoadBalance(ObjectProvider<ServiceInstanceListSupplier> lazyProvider, String name) {
 
+        this.supplierProvider = lazyProvider;
+        this.name = name;
+    }
+    public Mono<Response<ServiceInstance>> choose(Request request) {
+        ServiceInstanceListSupplier supplier = supplierProvider.getIfAvailable();
+        return supplier.get().next().map(instances -> {
+            if (instances.isEmpty()) return new EmptyResponse();
+            ServiceInstance instance = selectInstance(instances);
+            return new DefaultResponse(instance);
+        });
+    }
+    private ServiceInstance selectInstance(List<ServiceInstance> instances) {
+        if (CollectionUtils.isEmpty(instances)) return null;
+        for (int i = 0; i < instances.size(); i++) {
+            int port = instances.get(i).getPort();
+            if (port == 6209) {
+                System.out.println("有6209的就选6209");
+                return instances.get(i);//有6209的就选6209，否则随机选一个
+            }
+
+        }
+        return instances.get((int) (Math.random() * instances.size()));
+    }
+}
+```
 
 # 就近访问
 通过在消费者中指定集群名实现
