@@ -150,7 +150,6 @@ sentinal依赖+指定降级处理类和方法，feith或者resttempl'te调用接
 
 
 # 问题合集
-Yesterday: <% tp.date.yesterday("YYYY-MM-DD") %>
 
 ## 1、启动失败
 **问题描述**：
