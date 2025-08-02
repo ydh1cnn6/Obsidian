@@ -142,3 +142,27 @@ spring-cloud的版本依赖，用`spring-cloud-dependencies`
 	<scope>import</scope>
 </dependency>
 ```
+
+## 5、maven依赖都没导入，但没有任何报错
+**问题描述**：
+	nacos项目，什么依赖都没有
+**分析过程**：
+	尝试添加`spring-boot-maven-plugin`等，都没用（实际没有单独引用这个组件也能使用maven,暂不清楚作用）
+
+根据maven的clean时报错信息`'dependencies.dependency.version' for com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery:jar is missing`，但实际是在父模块中指定了，猜测是type和scope没写导致，因为之前cloud是写的
+**根本原因**：
+```xml
+<type>pom</type>
+<scope>import</scope>
+```
+**解决方案**：
+```xml
+<dependency>
+	<groupId>com.alibaba.cloud</groupId>
+	<artifactId>spring-cloud-alibaba-dependencies</artifactId>
+	<version>${spring-cloud-alibaba.version}</version>
+	<type>pom</type>
+	<scope>import</scope>
+</dependency>
+```
+	
