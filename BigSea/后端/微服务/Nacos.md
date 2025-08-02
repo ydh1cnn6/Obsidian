@@ -74,7 +74,7 @@ resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean�
 架构：访问goods时只访问6209服务
 ![image.png|600](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-08-02-202508021543813.png)
 ### **根本原因**：
-	自定义负载均衡策略，只能全部指定，不存在只给单独某个服务加，其他走默认
+	自定义负载均衡策略，只能全部一起指定。不存在只给单独某个服务配置其他走默认
 ### **解决方案**：
 #### 启动类：
 ```java title="启动类分别指定服务使用的负载均衡策略"
