@@ -23,8 +23,7 @@ template triggers: 问题
 不能使用@value注解，而要使用@nacosvalue注解，且autorefreshed=true
 ## 注意事项
 需要指定nacos的ip端口
-需要指定配置文件名，配置文件 ^[写在配置文件中，需要同时开启bootstrap=true]，或启动类上加注解
-
+需要指定配置文件名，配置文件  ^[写在配置文件中，需要同时开启bootstrap=true]，或启动类上加注解
 
 # springcloud
 不能用@nacosvalue，而要用value
@@ -57,13 +56,14 @@ resttemplate，配置的loadbalance是ribbon提供的轮训。可以加个bean�
 
 
 ## 自定义负载均衡-问题一
-**问题描述**：对同一个服务的两个请求分别配置`@LoadBalanced`和`@LoadBalancerClient(name = "GOODS",configuration = MyLoadBalance.class)`（`MyLoadBalance`设定的是只查某个服务器），实际都走的`MyLoadBalance`
-**分析过程**：
+### **问题描述**：
+对同一个服务的两个请求分别配置`@LoadBalanced`和`@LoadBalancerClient(name = "GOODS",configuration = MyLoadBalance.class)`（`MyLoadBalance`设定的是只查某个服务器），实际都走的`MyLoadBalance`
+### **分析过程**：
 	AI,未验证
-**根本原因**：
+### **根本原因**：
 1. 在Spring Cloud的LoadBalancer机制中，一旦为某个服务配置了自定义负载均衡器，它会应用到该服务的所有客户端调用中，包括RestTemplate和Feign。
 2. @LoadBalancerClient注解配置的负载均衡策略是针对特定服务的全局配置，会影响到所有对该服务的调用
-**解决方案**：
+### **解决方案**：
 	测试方案，待测试。
 
 ## 自定义负载均衡-问题二
@@ -152,18 +152,18 @@ sentinal依赖+指定降级处理类和方法，feith或者resttempl'te调用接
 # 问题合集
 
 ## 1、启动失败
-**问题描述**：
-	<font color="#ff0000">Caused by: com.mysql.cj.exceptions.UnableToConnectException: Public Key Retrieval is not allowed</font>
-**分析过程**：
-	搜索ai
-**根本原因**：
-	通常是由于MySQL 8.0及以上版本的安全机制导致。
-**解决方案**：
+### **问题描述**：
+<font color="#ff0000">Caused by: com.mysql.cj.exceptions.UnableToConnectException: Public Key Retrieval is not allowed</font>
+### **分析过程**：
+搜索ai
+### **根本原因**：
+通常是由于MySQL 8.0及以上版本的安全机制导致。
+### **解决方案**：
 	修改JDBC连接参数，为MySQL连接URL添加allowPublicKeyRetrieval=true参数
 ## 2、写启动脚本
-**描述**：
+### **描述**：
 	直接写在项目文件中，执行启动脚本即可直接启动nacos-server
-**实现**：
+### **实现**：
 ```yaml title="start.cmd"
 @echo off
 set "NACOS_DIR=D:\devsoft\nacos-server-2.0.1\nacos"
@@ -174,24 +174,24 @@ call startup.cmd -m standalone
 ```
 
 ## 3、注册到nocos上后，服务调用报错
-**问题描述**：
+### **问题描述**：
 	服务在nacos上已经注册上了，通过ip直接调用服务业没有问题，但通过网关或者服务调用服务时就会报错
-	![image.png|500](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-07-28-202507281740522.png)
-**分析过程**：
+![image.png|500](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-07-28-202507281740522.png)
+### **分析过程**：
 	1. 目标服务未注册到Nacos
 	2. Gateway无法从Nacos获取服务实例
 	3. 目标服务虽然注册，但健康状态异常
 	4. 网络问题导致Gateway无法访问目标服务
 	5. 路由配置错误
 	但都没找到，ai提示到了LoadBalancer，结合之前碰到过这个问题（通过一点一点删除debug发现的）
-**根本原因**：
+### **根本原因**：
 	LoadBalancer 虽然有了，但可能缺失一下东西，需要引入`spring-cloud-starter-loadbalancer`
-**解决方案**：
+### **解决方案**：
 ## 4、cloud-alibaba的版本依赖
-**描述**：
+### **描述**：
 spring-cloud-alibaba的版本依赖，用	`spring-cloud-alibaba-dependencies`
 spring-cloud的版本依赖，用`spring-cloud-dependencies`
-**实现**：
+### **实现**：
 ```xml title="pom.xml" 
 <!--  spring-cloud  -->
 <dependency>
@@ -212,18 +212,18 @@ spring-cloud的版本依赖，用`spring-cloud-dependencies`
 ```
 
 ## 5、maven依赖都没导入，但没有任何报错
-**问题描述**：
+### **问题描述**：
 	nacos项目，什么依赖都没有
-**分析过程**：
+### **分析过程**：
 	尝试添加`spring-boot-maven-plugin`等，都没用（实际没有单独引用这个组件也能使用maven,暂不清楚作用）
 
 根据maven的clean时报错信息`'dependencies.dependency.version' for com.alibaba.cloud:spring-cloud-starter-alibaba-nacos-discovery:jar is missing`，但实际是在父模块中指定了，猜测是type和scope没写导致，因为之前cloud是写的
-**根本原因**：
+### **根本原因**：
 ```xml
 <type>pom</type>
 <scope>import</scope>
 ```
-**解决方案**：
+### **解决方案**：
 ```xml
 <dependency>
 	<groupId>com.alibaba.cloud</groupId>
@@ -234,3 +234,4 @@ spring-cloud的版本依赖，用`spring-cloud-dependencies`
 </dependency>
 ```
 	
+[^1]: 写在配置文件中，需要同时开启bootstrap=true
