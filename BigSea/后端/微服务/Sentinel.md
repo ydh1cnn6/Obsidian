@@ -84,7 +84,36 @@ public class CustomerUrlCleaner implements UrlCleaner {
 
 
 
-## 流量控制—关联
+## 流量控制模式—关联
 需求分析：简单来说就是t1关联t2，当t2的QPS超过1，则t1被限流
+1、配置
+![image.png|400](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-08-04-202508041632251.png)
 
+2、失败场景：（间隔100毫秒同时执行2个请求，哪怕单线程算上延时goods的QPS也在2以上，所以会失败）
+![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-08-04-202508041633995.png)
+
+
+## 流量控制效果—Warm up
+
+阈值一般是一个微服务能承担的最大QPS，但是一个服务刚刚启动时，一切资源尚未初始化（冷启动），如果直接将QPS跑到最大值，可能导致服务瞬间宕机。
+warm up也叫预热模式，是应对服务冷启动的一种方案。请求阈值初始值是 maxThreshold / coldFactor，持续指定时长后，**逐渐提高**到maxThreshold值。而coldFactor的默认值是3.
+
+maxThreshold：单机阈值
+coldFactor：默认3，用来计算初始阈值
+预热时间:几秒内
+1、配置
+![配置|500](https://i-blog.csdnimg.cn/blog_migrate/7ee3159380972cefecfa93f2ffa003fe.png)
+2、效果示意图
+
+![Warm up|500](https://i-blog.csdnimg.cn/blog_migrate/2d82e4055336f06e519fb95ec9f20ea0.png)
+
+## 流量控制效果—排队
+效果：**削峰填谷**
+
+当请求超过QPS阈值时，快速失败和warm up 会拒绝新的请求并抛出异常。
+而排队等待则是让所有请求进入一个队列中，然后按照阈值允许的时间间隔依次执行。后来的请求必须等待前面执行完成，如果请求预期的等待时间超出最大时长，则会被拒绝。
+工作原理：
+>例如：QPS = 5，意味着每200ms处理一个队列中的请求；timeout = 2000，意味着预期等待时长超过2000ms的请求会被拒绝并抛出异常。
+
+![效果|500](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-08-04-202508041708613.png)
 
