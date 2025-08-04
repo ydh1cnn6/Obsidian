@@ -11,29 +11,24 @@
 ### @Api 
 位置：注解用于类上
 功能：表示标识这个类是 swagger 的资源。  
-
-### @ApiOperation 
+### @ApiOperation
 位置：注解用于方法
 功能：表示一个 http 请求的操作。  
-
 ### @ApiImplicitParams
 位置：方法上，存放的是`@ApiImplicitParam`数组
 功能：描述方法的参数信息
-#### @ApiImplicitParam：
+#### @ApiImplicitParam
 name: 参数名
 value:参数说明
 required:是否必填
 paramType: 参数类型（query/path/form/body/header）
 dataType: 参数数据类型
-
-
-### @ApiParam 
-位置：注解用于参数上，
+### @ApiParam
+位置：注解用于参数上
 功能：用来标明参数信息。
 
-### @ApiOperationSupport(order =1)
+### @ApiOperationSupport(order=1)
 位置：方法上
 功能：方法级别排序，数字越小越优先
-
 
 
