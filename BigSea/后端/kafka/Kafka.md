@@ -125,7 +125,8 @@ spring:
       auto-offset-reset: earliest
       # 是否自动提交偏移量（默认 true）
       enable-auto-commit: false
-      # 自动提交偏移量的间隔（ms，仅当 enable-auto-commit=true 时生效）
+      # 自动提交偏移量的间隔（ms，仅当 enable-auto-commi
+      t=true 时生效）
       auto-commit-interval: 1000
       # 消费者一次拉取的最大记录数
       max-poll-records: 500
@@ -144,7 +145,7 @@ spring:
 
 ### 3、生产者服务
 实体类
-```java
+```java title="USER"
 import lombok.Data;
 
 @Data // Lombok 注解，自动生成 getter/setter
@@ -156,7 +157,7 @@ public class User {
 ```
 
 成缠着
-```java
+```java title="KafkaProducer"
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
@@ -246,4 +247,21 @@ public class KafkaConsumer {
 }
 ```
 
+
+### 5、创建topic
+如何topic已存在，则不会重新创建，也不会修改topic。
+The bean causes the topic to be created on the broker; it is not needed if the topic already exists.`NewTopic`
+
+```java title="topic"
+@Bean  
+public NewTopic topic() {  
+    return TopicBuilder.name("topic1")  
+            .partitions(10)  
+            .replicas(1)  
+            .build();  
+}
+```
+
+
 ##  补充说明
+### 1、配置的topic分区
