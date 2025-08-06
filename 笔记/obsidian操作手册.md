@@ -42,3 +42,8 @@ image converter，绝大部分关于图片的功能这个插件全都有，包�
 
 quicker
 Windows圆形轮盘（相当于打开应用快捷键，类似utools）
+
+
+
+Obsidian 插件：Word Splitting for Simplified Chinese in Edit Mode and Vim Mode
+中文分词插件（双击时选中中文更合理点）
