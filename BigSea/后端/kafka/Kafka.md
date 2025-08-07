@@ -253,6 +253,13 @@ public class KafkaConsumer {
 The bean causes the topic to be created on the broker; it is not needed if the topic already exists.`NewTopic`
 
 ```java title="topic"
+@Bean 
+public KafkaAdmin admin() { 
+	Map<String, Object> configs = new HashMap<>(); 
+	configs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092"); 
+	return new KafkaAdmin(configs); 
+}
+
 @Bean  
 public NewTopic topic() {  
     return TopicBuilder.name("topic1")  
@@ -264,4 +271,46 @@ public NewTopic topic() {
 
 
 ##  补充说明
-### 1、配置的topic分区
+### 1、配置的topic分区 （没想好）
+```java title=""
+
+
+```
+
+
+
+## 命令行管理Kafka Topic
+### 1. 查看Topic列表
+```bash
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+```
+
+### 2. 查看Topic详细信息
+```bash
+bin/kafka-topics.sh --describe --topic my_topic --bootstrap-server localhost:9092
+```
+
+### 3. 修改Topic配置
+```bash
+bin/kafka-configs.sh --alter \
+  --bootstrap-server localhost:9092 \
+  --entity-type topics \
+  --entity-name my_topic \
+  --add-config retention.ms=86400000
+```
+
+### 4. 增加Topic分区数
+```bash
+bin/kafka-topics.sh --alter \
+  --bootstrap-server localhost:9092 \
+  --topic my_topic \
+  --partitions 6
+```
+
+### 5. 删除Topic
+```bash
+bin/kafka-topics.sh --delete \
+  --bootstrap-server localhost:9092 \
+  --topic my_topic
+```
+``
