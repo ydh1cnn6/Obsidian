@@ -251,6 +251,7 @@ public class KafkaConsumer {
 ### 5、创建topic
 如何topic已存在，则不会重新创建，也不会修改topic。
 The bean causes the topic to be created on the broker; it is not needed if the topic already exists.`NewTopic`
+#### 创建单个
 
 ```java title="topic"
 @Bean 
@@ -269,6 +270,21 @@ public NewTopic topic() {
 }
 ```
 
+#### 批量创建Topic
+```java title="方式2"
+@Bean public KafkaAdmin.NewTopics topics456() {
+	return new NewTopics( 
+		TopicBuilder.name("defaultBoth") 
+			.build(), 
+		TopicBuilder.name("defaultPart") 
+			.replicas(1)
+			 .build(), 
+		TopicBuilder.name("defaultRepl") 
+			.partitions(3) 
+		.build()
+	); 
+}
+```
 
 ##  补充说明
 ### 1、配置的topic分区 （没想好）
