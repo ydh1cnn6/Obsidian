@@ -156,7 +156,7 @@ public class User {
 }
 ```
 
-成缠着
+生产者
 ```java title="KafkaProducer"
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
@@ -199,6 +199,30 @@ public class KafkaProducer {
     }
 }
 ```
+
+##### 方案二：配置生产者（）
+```java sdf
+@Bean  
+public ProducerFactory<Integer, String> producerFactory() {  
+    return new DefaultKafkaProducerFactory<>(producerConfigs());  
+}  
+  
+@Bean  
+public Map<String, Object> producerConfigs() {  
+    Map<String, Object> props = new HashMap<>();  
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");  
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, IntegerSerializer.class);  
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);  
+    // See https://kafka.apache.org/documentation/#producerconfigs for more properties  
+    return props;  
+}  
+  
+@Bean  
+public KafkaTemplate<Integer, String> kafkaTemplate() {  
+    return new KafkaTemplate<Integer, String>(producerFactory());  
+}
+```
+
 
 
 ### 4、消费者服务
