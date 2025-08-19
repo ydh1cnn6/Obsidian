@@ -77,7 +77,44 @@ bin/kafka-console-producer.sh --topic quickstart-events --bootstrap-server local
 
 
 # Kafka介绍
-1、
+# 1、概念
+
+
+**Message/Record**
+消息
+**Topic：**
+
+**partitions：**
+主题的物理分割单元，每个分区是一个有序、不可变的日志文件序列。
+**Replication：**
+副本，Leader处理所有读写请求，Follower异步复制数据。
+**Offset：**
+消息在分区中的唯一位置标识。消费者通过提交偏移量记录消费进度，支持回溯消费（如重处理历史数据）
+
+**Broker**
+kafka单台服务器节点
+**Producer**
+生产者
+**Consumer**
+消费者
+
+
+# 关键配置参数
+num.partitions：主题创建时的分区数，影响并行度，建议根据 Broker 数量和预期吞吐量设置。
+replication.factor：副本数量，通常为3（容忍2个Broker故障，==等价于TopicBuilder.replicas(3)==）
+log.segment.bytes：日志段大小，控制日志文件滚动频率，默认1GB。
+message.max.bytes：单个消息的最大大小，需与消费者配置匹配。
+
+
+| 配置项                                   | 默认值              | 说明                                              |
+|---------------------------------------|------------------|-------------------------------------------------|
+| batch.size                            | 16384 (16 KB)    | 批次的最大字节数，达到此大小时，生产者会将消息发送出去。                    |
+| linger.ms                             | 0                | 最长等待时间，等待更多消息以便组成一个更大的批次。                       |
+| compression.type                      | none             | 是否压缩消息，支持 none、gzip、snappy、lz4，压缩能节省带宽和存储。      |
+| acks                                  | 1                | 生产者等待 Kafka Broker 确认消息的方式，acks=all 可以保证更强的可靠性。 |
+| max.in.flight.requests.per.connection | 5                | 限制单个连接上可以并行发送的请求数量。                             |
+| buffer.memory                         | 33554432 (32 MB) | 生产者缓冲区的总内存大小，用于存储待发送的消息。                        |
+
 
 
 # SpringBoot
