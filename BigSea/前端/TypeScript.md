@@ -5,7 +5,7 @@ number
 
 string
 
-数组
+## 数组
 
 ```jsx
 let list: number[] = [1, 2, 3];

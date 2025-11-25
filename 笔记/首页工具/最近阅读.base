@@ -1,0 +1,20 @@
+views:
+  - type: cards
+    name: 最近阅读
+    filters:
+      or:
+        - and:
+            - file.basename != "obsidian操作手册"
+            - '!file.path.startsWith("笔记")'
+            - '!file.path.startsWith("动漫")'
+            - '!file.path.startsWith("images")'
+            - file.ext == "md"
+    order:
+      - file.basename
+    sort:
+      - property: file.mtime
+        direction: DESC
+    limit: 7
+    cardSize: 170
+    imageFit: contain
+    markers: number

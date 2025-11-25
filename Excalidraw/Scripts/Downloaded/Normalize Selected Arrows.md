@@ -1,3 +1,6 @@
+---
+title: Normalize Selected Arrows
+---
 /*
 ![](https://raw.githubusercontent.com/zsviczian/obsidian-excalidraw-plugin/master/images/scripts-normalize-selected-arrows.png)
 

@@ -1,3 +1,6 @@
+---
+title: shell
+---
 ### 1、日期格式
 ```shell
 date 							#Sat May 15 22:40:38 CST 2021

@@ -1,0 +1,46 @@
+views:
+  - type: cards
+    name: 动漫列表
+    filters:
+      and:
+        - file.folder == "动漫"
+        - file.ext == "md"
+        - and:
+            - '!file.tags.contains("R18")'
+    order:
+      - file.basename
+    limit: 3
+    imageAspectRatio: 0.7
+    image: note.封面
+    cardSize: 170
+  - type: cards
+    name: 视图
+    filters:
+      and:
+        - file.folder == "动漫"
+        - file.ext == "md"
+        - file.tags.contains("R18")
+    order:
+      - file.name
+      - file.tags
+    image: note.封面
+  - type: table
+    name: 视图 2
+  - type: cards
+    name: 动漫列表-仅2
+    filters:
+      and:
+        - file.folder == "动漫"
+        - file.ext == "md"
+        - and:
+            - '!file.tags.contains("R18")'
+    order:
+      - file.basename
+      - 观看状态
+      - 开播日期
+      - file.tags
+    limit: 2
+    imageFit: ""
+    imageAspectRatio: 2.15
+    image: note.封面
+    cardSize: 800

@@ -1,5 +1,7 @@
 ---
 typora-root-url: images
+tags: [和]
+title: 2、mybatis课件
 ---
 ```java
 class aaa{

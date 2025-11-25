@@ -1,3 +1,6 @@
+---
+title: springboot接口传参
+---
 ### **<font style="color:rgb(79, 79, 79);">@PathVariable</font>**
 ### **<font style="color:rgb(79, 79, 79);">@RequestParam</font>**
 ```java

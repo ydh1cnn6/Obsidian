@@ -1,3 +1,6 @@
+---
+title: Mindmap format
+---
 /*
 
 format **the left to right** mind map

@@ -1,0 +1,21 @@
+views:
+  - type: map
+    name: map
+    filters:
+      and:
+        - file.ext == "md"
+        - "!file.path.isEmpty()"
+        - "!coordinates.isEmpty()"
+    order:
+      - file.name
+      - file.tags
+    sort:
+      - property: updateDate
+        direction: DESC
+    center: "[32.01295, 118.7276]"
+    defaultZoom: 11.8
+    coordinates: note.coordinates
+    markerIcon: note.icon
+    markerColor: note.iconColor
+    mapHeight: 480
+    maxZoom: 18

@@ -13,7 +13,7 @@ mirror：<font style="color:rgba(0, 0, 0, 0.75);">覆盖repository的镜像地�
 
 <font style="color:rgba(0, 0, 0, 0.75);">2、注意：</font>
 
-<font style="color:rgba(0, 0, 0, 0.75);">项目的maven地址要重新配置，在</font>`<font style="color:rgba(0, 0, 0, 0.75);">setting</font>`<font style="color:rgba(0, 0, 0, 0.75);">-</font>`<font style="color:rgba(0, 0, 0, 0.75);">Build</font>`<font style="color:rgba(0, 0, 0, 0.75);">-</font>`<font style="color:rgba(0, 0, 0, 0.75);">Build Tools</font>`<font style="color:rgba(0, 0, 0, 0.75);">- </font>`<font style="color:rgba(0, 0, 0, 0.75);">Maven</font>`
+<font style="color:rgba(0, 0, 0, 0.75);">项目的maven地址要重新配置，在</font><font style="color:rgba(0, 0, 0, 0.75);">setting</font><font style="color:rgba(0, 0, 0, 0.75);">-</font><font style="color:rgba(0, 0, 0, 0.75);">Build</font>`<font style="color:rgba(0, 0, 0, 0.75);">-</font>`<font style="color:rgba(0, 0, 0, 0.75);">Build Tools</font>`<font style="color:rgba(0, 0, 0, 0.75);">- </font>`<font style="color:rgba(0, 0, 0, 0.75);">Maven</font>`
 
 <font style="color:rgba(0, 0, 0, 0.75);"></font>
 

@@ -1,3 +1,7 @@
+---
+title: Gradle_build
+updateDate: 2025-11-11 15:45:33
+---
 ### 错误描述：![](https://cdn.nlark.com/yuque/0/2025/png/39031477/1747964280966-0fa005b5-a5a1-4836-9d52-c498a8b6e9fe.png)
 ### <font style="color:rgb(77, 77, 77);">解决方案</font>
 1. <font style="color:rgba(0, 0, 0, 0.75);">定位到Project根目录下的.idea文件夹。</font>
