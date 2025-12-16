@@ -1,6 +1,6 @@
 ---
 title: jvm
-updateDate: 2025-12-16 10:53:27
+updateDate: 2025-12-16 11:10:07
 tags:
   - 笔记
   - jvm
@@ -34,7 +34,11 @@ Sunset: 05:01 PM
 - JDK6 及更早：永久代完全存储类元数据、运行时常量池、静态变量值、方法字节码等所有方法区要求的内容；
 - JDK7：做了过渡优化 —— 将字符串常量池、静态变量值移到堆的老年代，但类元数据、符号引用等核心内容仍存储在永久代，仍属于对方法区的实现。
 - JDK8：永久代拆分成方法区+元空间
-[jvm内存模型备份image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512161007782.png)
+**永久代  ->值老年-引用永久 ->值老年-引用元空间**
+[深入理解JavaJVM：方法区与元空间-CSDN博客](https://blog.csdn.net/m0_69057918/article/details/131123965)
+
+
+[jvm内存模型备份](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512161007782.png)
 ![jvm内存模型2025-12-15 17.37.01.excalidraw](jvm内存模型2025-12-15%2017.37.01.excalidraw.md)
 ## 栈
 ![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512160926475.png)
