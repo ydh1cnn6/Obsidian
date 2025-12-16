@@ -19,3 +19,5 @@ views:
     markerColor: note.iconColor
     mapHeight: 480
     maxZoom: 18
+    mapTiles:
+      - https://tiles.openfreemap.org/styles/liberty

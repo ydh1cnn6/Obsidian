@@ -1,3 +1,6 @@
+---
+title: 函数式接口与 Lambda 表达式详细教程
+---
 #### 一、函数式接口（Functional Interface）
 
 **定义**：  

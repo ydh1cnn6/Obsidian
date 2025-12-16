@@ -254,33 +254,18 @@ alt大图查看，可旋转等
 
 
 # Template插件
-![|323x141](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051519051.png)
-
-
-
-# 图床设置
-![image.png|600|327x157](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051528678.png)
-
-![image.png|600|324x228](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051530667.png)
-
-![image.png|600|322x148](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051530235.png)
-
-![image.png|600|340x239](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051531553.png)
-
-![image.png|600|336x185](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051532866.png)
-
-![image.png|600|338x237](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051533479.png)
-
+![|422x185](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051519051.png)
 
 
 # 图片布局
 **media viewer**
-```
+2025-12-12  禁用（有点影响图片查看）
+
 ```gallery
 ![image.png|150|103x103](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-11-202511112144682.png)
 。。。。
-    ```
 ```
+
 缺点：
 1、和advance image有一点的冲突，advance image识别不了里面的image（alt时可以查看，但下面的列表不展示）
 2、不能手动调节图片大小
@@ -316,3 +301,43 @@ iconColor: "<%= iconColor %>"
 ```
 
 ![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-13-202511132331215.png)
+
+# 图床设置
+![image.png|600|327x157](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051528678.png)
+
+![image.png|600|324x228](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051530667.png)
+
+![image.png|600|322x148](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051530235.png)
+
+![image.png|600|340x239](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051531553.png)
+
+![image.png|600|336x185](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051532866.png)
+
+![image.png|600|338x237](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051533479.png)
+
+
+
+# Obsidian Web Clipper
+## 获取页面中的信息成markdown
+==笔记内容==
+思路：1、转为markdown2、给表格多加一行（不然展示不对）3、删除多余空行
+```
+{{selectionHtml|markdown|trim|replace:"
+
+\|":"
+
+
+\|"|replace:"
+
+":"
+"}}}
+```
+## 高亮后复制文本
+
+
+
+# 笔记大纲
+插件 quite outline
+效果图：
+![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-15-202512151013927.png)
+打开方式：ctrl+P搜索`quite outline`
