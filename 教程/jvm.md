@@ -1,6 +1,6 @@
 ---
 title: jvm
-updateDate: 2025-12-16 15:12:51
+updateDate: 2025-12-16 17:11:02
 tags:
   - 笔记
   - jvm
@@ -40,7 +40,7 @@ Sunset: 05:01 PM
 
 [java内存模型备份](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512161116624.png)
 ![jvm内存模型2025-12-15 17.37.01.excalidraw](jvm内存模型2025-12-15%2017.37.01.excalidraw.md)
-## 栈
+## 1、栈
 ![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512160926475.png)
 
 ### 1、局部变量表：
@@ -52,7 +52,7 @@ Sunset: 05:01 PM
 ### 动态链接
 ### 方法返回地址
 ### 额外的信息
-## 堆
+## 2、堆
 ![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512161005819.png)
 ### 新生代
 清理方式：MinorGC，停止-复制（Stop-and-copy）”清理法
@@ -81,7 +81,7 @@ Eden区满时
 （4）通过Minor GC后进入老年代的平均大小大于老年代的可用内存  
 （5）由Eden区、From Space区向To Space区复制时，对象大小大于To Space可用内存，则把该对象转存到老年代，且老年代的可用内存小于该对象大小。
 
-## 方法区
+## 3、方法区
 方法区是《Java 虚拟机规范》中定义的**线程共享逻辑区域**，不属于堆（但 JDK7 前的永久代是堆内实现，易混淆），核心作用是存储支撑 JVM 运行的 “类相关核心数据”，是 JVM 能识别、加载、执行类的基础。
 
 | 存储内容           | 具体作用                                                                                                             |
@@ -102,11 +102,65 @@ Eden区满时
 |溢出异常|OutOfMemoryError: PermGen space|OutOfMemoryError: Metaspace|
 |核心改进|-|避免堆内空间竞争、支持动态扩容|
 
-## 本地方法区
+## 4、本地方法区
 
-## 程序计数器
+## 5、程序计数器
 
 
+# 参数配置
+
+## 1. ‌堆内存配置参数‌
+- ‌**Xms**：初始堆大小（如 `-Xms256m`）
+- ‌**Xmx**‌：最大堆大小（如 `-Xmx512m`）
+- ‌**Xmn**‌：新生代大小（通常为 `-Xmx` 的 1/3 或 1/4）
+- ‌**XX:MetaspaceSize**‌：元空间初始大小（如 `-XX:MetaspaceSize=512m`）
+- ‌**XX:MaxMetaspaceSize**‌：元空间最大值（如 `-XX:MaxMetaspaceSize=1024m`）
+## 2. 垃圾回收器配置参数‌
+- ‌**XX:+UseSerialGC**‌：串行垃圾收集器
+- ‌**XX:+UseParallelGC**‌：并行垃圾收集器
+- ‌**XX:+UseConcMarkSweepGC**‌：CMS垃圾收集器
+- ‌**XX:+UseG1GC**‌：G1垃圾收集器
+- ‌**XX:ParallelGCThreads=n**‌：设置并行收集器线程数（如 `-XX:ParallelGCThreads=4`）
+## 3. ‌**GC策略参数**‌
+- ‌**XX:MaxGCPauseMillis=n**‌：设置最大垃圾回收暂停时间（如 `-XX:MaxGCPauseMillis=100`）
+- ‌**XX:GCTimeRatio=n**‌：设置垃圾回收时间占程序运行时间的百分比（如 `-XX:GCTimeRatio=19`）
+- ‌**XX:MaxTenuringThreshold=n**‌：设置对象进入老年代的阈值（如 `-XX:MaxTenuringThreshold=15`）
+## 4. ‌**日志和调试参数**‌
+- ‌**XX:+PrintGCDetails**‌：打印GC详细信息
+- ‌**XX:+PrintGCTimeStamps**‌：打印GC时间戳
+- ‌**XX:+HeapDumpOnOutOfMemoryError**‌：OOM时生成堆转储文件
+- ‌**Xloggc:file**‌：指定GC日志文件路径（如 `-Xloggc:/var/log/gc.log`）
+## 5. ‌**其他常用参数**‌
+- ‌**Xss**‌ ：线程堆栈大小（如 `-Xss1024k`）
+- ‌**XX:SurvivorRatio**‌：Eden与Survivor区比例（默认8）
+- ‌**XX:+UseAdaptiveSizePolicy**‌：启用自适应大小策略
+
+
+## 1. ‌堆内存配置参数‌
+- ‌-Xms：初始堆大小（如 `-Xms256m`）
+- ‌**-Xmx**‌：最大堆大小（如 `-Xmx512m`）
+- ‌**-Xmn**‌：新生代大小（通常为 `-Xmx` 的 1/3 或 1/4）
+- ‌**-XX:MetaspaceSize**‌：元空间初始大小（如 `-XX:MetaspaceSize=512m`）
+- ‌**-XX:MaxMetaspaceSize**‌：元空间最大值（如 `-XX:MaxMetaspaceSize=1024m`）
+## 2. 垃圾回收器配置参数‌
+- ‌**-XX:+UseSerialGC**‌：串行垃圾收集器
+- ‌**-XX:+UseParallelGC**‌：并行垃圾收集器
+- ‌**-XX:+UseConcMarkSweepGC**‌：CMS垃圾收集器
+- ‌**-XX:+UseG1GC**‌：G1垃圾收集器
+- ‌**-XX:ParallelGCThreads=n**‌：设置并行收集器线程数（如 `-XX:ParallelGCThreads=4`）
+### 3. ‌**GC策略参数**‌
+- ‌**-XX:MaxGCPauseMillis=n**‌：设置最大垃圾回收暂停时间（如 `-XX:MaxGCPauseMillis=100`）
+- ‌**-XX:GCTimeRatio=n**‌：设置垃圾回收时间占程序运行时间的百分比（如 `-XX:GCTimeRatio=19`）
+- ‌**-XX:MaxTenuringThreshold=n**‌：设置对象进入老年代的阈值（如 `-XX:MaxTenuringThreshold=15`）
+### 4. ‌**日志和调试参数**‌
+- ‌**-XX:+PrintGCDetails**‌：打印GC详细信息
+- ‌**-XX:+PrintGCTimeStamps**‌：打印GC时间戳
+- ‌**-XX:+HeapDumpOnOutOfMemoryError**‌：OOM时生成堆转储文件
+- ‌**-Xloggc:file**‌：指定GC日志文件路径（如 `-Xloggc:/var/log/gc.log`）
+## 5. ‌**其他常用参数**‌
+- ‌**-Xss**‌ ：线程堆栈大小（如 `-Xss1024k`）
+- ‌**-XX:SurvivorRatio**‌：Eden与Survivor区比例（默认8）
+- ‌**-XX:+UseAdaptiveSizePolicy**‌：启用自适应大小策略
 
 
 # jvm
