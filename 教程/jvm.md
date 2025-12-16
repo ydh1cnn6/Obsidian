@@ -1,6 +1,6 @@
 ---
 title: jvm
-updateDate: 2025-12-16 10:31:58
+updateDate: 2025-12-16 10:53:27
 tags:
   - 笔记
   - jvm
@@ -31,7 +31,10 @@ Sunset: 05:01 PM
 >[!tip]
 补充：**本地接口**和**本地方法栈**进行交互
 
-![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512161007782.png)
+- JDK6 及更早：永久代完全存储类元数据、运行时常量池、静态变量值、方法字节码等所有方法区要求的内容；
+- JDK7：做了过渡优化 —— 将字符串常量池、静态变量值移到堆的老年代，但类元数据、符号引用等核心内容仍存储在永久代，仍属于对方法区的实现。
+- JDK8：永久代拆分成方法区+元空间
+[jvm内存模型备份image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512161007782.png)
 ![jvm内存模型2025-12-15 17.37.01.excalidraw](jvm内存模型2025-12-15%2017.37.01.excalidraw.md)
 ## 栈
 ![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-16-202512160926475.png)
@@ -74,6 +77,7 @@ Eden区满时
 （4）通过Minor GC后进入老年代的平均大小大于老年代的可用内存  
 （5）由Eden区、From Space区向To Space区复制时，对象大小大于To Space可用内存，则把该对象转存到老年代，且老年代的可用内存小于该对象大小。
 ## 元空间
+
 |维度|永久代（PermGen）|元空间（Metaspace）|
 |---|---|---|
 |JDK 版本|JDK1.2 ~ JDK7|JDK8+|
