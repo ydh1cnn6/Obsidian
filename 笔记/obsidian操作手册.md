@@ -300,7 +300,7 @@ iconColor: "<%= iconColor %>"
 ---
 ```
 
-![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-13-202511132331215.png)
+![image.png|400](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-13-202511132331215.png)
 
 # 图床设置
 ![image.png|600|327x157](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-11-05-202511051528678.png)
