@@ -1,5 +1,5 @@
 ---
-title: hdfs、imapla、have
+title: hafs-hive-hbase-imapla关系
 tags:
   - 笔记
   - 未命名
@@ -7,7 +7,7 @@ author: BigSea
 email: 2834637197@qq.com
 封面: ""
 createDate: 2025-12-24 16:12:32
-updateDate: 2025-12-25 09:31:54
+updateDate: 2025-12-25 09:59:46
 week: 第52周｜星期三
 Country: China
 City: NanJing
@@ -26,11 +26,13 @@ SunHour: 7.8h
 Sunrise: 07:03 AM
 Sunset: 05:06 PM
 ---
-
+[hafs-hive-hbase-imapla关系备份](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-25-202512250952721.png)
+![hafs-hive-hbase-imapla关系](Excalidraw/hafs-hive-hbase-imapla关系.md)
 # Hadoop
 ## HDFS
 HDFS的英文全称是Hadoop Distributed File System，即Hadoop分布式文件系统
 ## YARN
+
 ## MapReduce
 
 
@@ -46,6 +48,7 @@ HBase是一个开源的、分布式的、持久的、强一致性的数据存储
 2. HBase为查询而生的，**它通过组织起节点内所有机器的内存**，提供一個超大的内存Hash表 。
 3. HBase是物理表，不是逻辑表，提供一个超大的内存hash表，搜索引擎通过它来存储索引，方便查询操作。 
 4. HBase是列存储。
+对于那些有低延时要求的应用程序，HBase是一个好的选择，尤其适用于对海量数据集进行访问并要求**毫秒级响应**时间的情况，但HBase的设计是对单行或者少量数据集的访问，对HBase的访问必须提供主键或者主键范围。访问接口：Hive、Pig、REST Gateway、HBase Shell、Native Java API、Thrift Gateway
 >[!tip]
 Hive 提供易用的查询接口，MapReduce 提供分布式计算能力。但随着技术发展，Hive 已不再局限于 **MapReduce**，用户可根据场景选择更高效的执行引擎
 # Impala
