@@ -1,3 +1,6 @@
+---
+title: git命令
+---
 第一次拉取代码，git pull
 
 拉取新代码，先merge再pull

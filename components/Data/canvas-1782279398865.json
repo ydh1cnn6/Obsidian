@@ -1,0 +1,74 @@
+{
+  "canvasId": "canvas-1782279398865",
+  "layout": {
+    "type": "flow",
+    "options": {
+      "gap": 8,
+      "padding": 16
+    }
+  },
+  "components": [
+    {
+      "id": "comp-1782279670323-yl8o70rbe",
+      "type": "button",
+      "props": {
+        "text": "按钮1",
+        "color": "#6b80a8",
+        "variant": "secondary",
+        "size": "large",
+        "onClick": ""
+      },
+      "layoutConfig": {
+        "backgroundColor": "#775050",
+        "padding": "2px",
+        "color": "#334b70",
+        "borderColor": "#a15e5e",
+        "transform": "translate(196px, -91px)"
+      }
+    },
+    {
+      "id": "comp-1782280082626-eo0fgyznm",
+      "type": "text",
+      "props": {
+        "content": "文本内容",
+        "fontSize": 15,
+        "fontWeight": "normal",
+        "color": "inherit",
+        "align": "left"
+      },
+      "layoutConfig": {
+        "width": "1px",
+        "margin": "1px",
+        "opacity": "0.7"
+      }
+    },
+    {
+      "id": "comp-1782280481045-kuovybcdy",
+      "type": "input",
+      "props": {
+        "placeholder": "123123123",
+        "value": "11q1",
+        "type": "text",
+        "width": 200
+      },
+      "layoutConfig": {
+        "transform": "translate(101px, 42px)"
+      }
+    },
+    {
+      "id": "comp-1782281262782-zv65y4ght",
+      "type": "button",
+      "props": {
+        "text": "按钮12",
+        "color": "#3B82F6",
+        "variant": "outline",
+        "size": "medium",
+        "onClick": ""
+      },
+      "layoutConfig": {
+        "borderColor": "#220707"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

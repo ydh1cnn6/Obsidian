@@ -1,5 +1,6 @@
 ---
 typora-root-url: images
+title: Mysql补充
 ---
 
 # Mysql的逻辑架构

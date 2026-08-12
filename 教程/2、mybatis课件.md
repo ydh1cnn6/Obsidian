@@ -2,6 +2,7 @@
 typora-root-url: images
 tags: [和]
 title: 2、mybatis课件
+updateDate: 2026-01-30 15:36:57
 ---
 ```java
 class aaa{
@@ -27,7 +28,7 @@ Mybatis是持久层的框架，基于JDBC，对JDBC进行封装，支持普通�
 
 ## mybatis的运行流程
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171315849.png" alt="01.运行流程" style="zoom:60%;" />
+<img src="https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-01.运行流程.png" alt="01.运行流程" style="zoom:60%;" />
 
 
 

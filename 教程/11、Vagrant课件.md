@@ -1,5 +1,7 @@
 ---
 typora-root-url: D:\ftp178\02.上课内容\11.vagrant&linux\01.课件\images
+title: 11、Vagrant课件
+updateDate: 2026-01-30 15:53:47
 ---
 
 # 什么是Vagrant
@@ -44,7 +46,7 @@ VirtualBox 是一款开源[虚拟机软件](https://baike.baidu.com/item/虚拟�
 
 ### 设置path
 
-![01.环境变量](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171259658.png)
+![01.环境变量.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-01.环境变量.png)
 
 ## 使用Vagrant安装Centos7
 

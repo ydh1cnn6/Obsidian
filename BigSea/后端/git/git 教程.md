@@ -1,8 +1,16 @@
+---
+updateDate: 2026-04-15 16:29:11
+title: git 教程
+---
 Ls_files，Plumbing Commands，底层命令
 
 [https://cloud.tencent.com/developer/doc/1096](https://cloud.tencent.com/developer/doc/1096)
 
 Git 全部命令
+
+![component-5ei3a0u7r](component-5ei3a0u7r.components)
+
+
 
 [https://git-scm.com/docs](https://git-scm.com/docs)
 
@@ -299,13 +307,12 @@ $ git config --global alias.st status
 	文件 A 的修改处于暂存状态（与存储前一致）。
 	文件 B 的修改处于未暂存状态。
 ### Git clearn
-	移除工作区中**未跟踪的（且没被忽略的）**文件, 不好找回，可以用 git stash -a 移除更安全，因为还能从栈中恢复
-
-##### `git clean -f -d`
-	移除工作目录中所有未追踪的文件以及空的子目录
+移除工作区中**未跟踪的（且没被忽略的）**文件, 不好找回，可以用 git stash -a 移除更安全，因为还能从栈中恢复
+##### git clean -f -d
+移除工作目录中所有未追踪的文件以及空的子目录
 
 `--dry-run` 或 `-n` 选项
-	这意味着“做一次演习然后告诉你将要移除什么”
+这意味着“做一次演习然后告诉你将要移除什么”
 
 #### -i 或 “interactive”
 	以交互模式运行 clean 命令。
@@ -324,21 +331,13 @@ $ git config --global alias.st status
 - `--break` 和 `--heading` 选项来使输出更加容易阅读
 
 ### Git reset
-
-	修改 HEAD 指向新的分支引用，将索引填充为该次提交的快照，然后将索引的内容复制到工作目录中。
-
+录中。
 	1、soft：仅修改 head 指向
-	
 	2、mix：修改 head 指向后，将 HEAD 指向的当前快照的内容来更新索引。
-	
 	3、hard：修改 head 指向后，将 HEAD 指向的当前快照的内容来更新索引，覆盖编辑区（未跟踪的文件有丢失风险）
-	
 	Git reset 路径对该文件或路径从 head 中取覆盖暂存区（或加上编辑区）
-	
 	Git reset hash 跳转到指定版本
-	
 	Git reset branchname 将分支指向另一个提交（**不清楚逻辑，可能是两个分支名指向同一个提交，但这样会导致原来的分支丢失吧**）
-
 问题：
 
 1、git branch 时，暂存区是取的哪个分支，是不是复制原分支；编辑区，已追踪的文件和暂存区一致吗？为追踪应该不修改吧？

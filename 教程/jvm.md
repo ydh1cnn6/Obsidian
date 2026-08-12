@@ -1,6 +1,6 @@
 ---
 title: jvm
-updateDate: 2025-12-16 17:11:02
+updateDate: 2026-01-30 15:56:50
 tags:
   - 笔记
   - jvm
@@ -206,7 +206,9 @@ Eden区满时
 调优：基本无视这一块
 常说的内存：
 -Xmx和-Xms设置为一样大，目的是避免伸缩（xmx默认1/4物理内存）
-![image-20230819160721365](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308191607517.png)parallel scavenge
+![image-20230819160721365.png](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-xmx与xms配置.png)
+
+parallel scavenge
 # java对象的引用类型
 ## 强引用
 A a = new A();

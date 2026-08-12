@@ -1,6 +1,7 @@
 ---
 typora-root-url: ./
 title: 8、shiro
+updateDate: 2026-01-30 15:53:10
 ---
 
 # 权限管理
@@ -56,8 +57,8 @@ Shiro可以用在web项目，也可以用在非web项目，可以单独运行，
 SSM + Shiro
 
 Springboot + Spring security
+![shiro.jpg|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-shiro.jpg)
 
-![shiro](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171308938.jpg)
 
 Subject：主体，外部应用程序都是通过和Subject进行交互，类似于用户的概念，可能是通过浏览器发送请求的用户，也可能是一个运行的程序。是shiro的核心接口，定义了很多认证的方法，核心就是login
 

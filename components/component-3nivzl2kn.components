@@ -1,0 +1,46 @@
+{
+  "id": "component-3nivzl2kn",
+  "type": "multi",
+  "titleAlign": "center",
+  "tabTitle": "component-3nivzl2kn",
+  "maxWidthRatio": -1,
+  "showBorder": false,
+  "showTitle": true,
+  "showShadow": false,
+  "createAt": "2026-04-13T06:52:45.910Z",
+  "updateAt": "2026-04-13T06:52:45.910Z",
+  "components": [
+    {
+      "id": "component-inxjfo9m1",
+      "type": "time",
+      "titleAlign": "center",
+      "tabTitle": "component-3nivzl2kn",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-04-13T06:53:01.129Z",
+      "updateAt": "2026-04-13T06:53:01.129Z",
+      "components": [],
+      "layoutType": "grid",
+      "locked": false,
+      "layoutOptions": {},
+      "showLunar": false,
+      "hideDateInfo": false,
+      "hideSeconds": false,
+      "hideProgress": false,
+      "semanticTime": false,
+      "position": {
+        "left": 9.98868,
+        "top": 81.9872
+      },
+      "size": {
+        "width": 306.27,
+        "height": 189.987
+      }
+    }
+  ],
+  "layoutType": "grid",
+  "locked": false,
+  "layoutOptions": {}
+}

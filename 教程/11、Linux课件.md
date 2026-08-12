@@ -1,5 +1,7 @@
 ---
 typora-root-url: images
+title: 11、Linux课件
+updateDate: 2026-01-30 15:50:00
 ---
 
 # Linux概述
@@ -65,8 +67,7 @@ linux系统以文件为基础，系统子目录当中的文件主要是保证系
 /proc:目录下的文件和子目录代表系统中运行的实际进程和系统内核的状态
 
 /srv:用于存放特定服务相关的数据、配置文件和其他资源。
-
-![目录结构](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171303158.jpg)
+![目录结构](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-目录结构.jpg)
 
 Linux系统是区分大小写，Linux文件没有扩展名
 
@@ -458,9 +459,8 @@ d**rwx** r-x**r-x**  test :  第一组 rwx表示test文件的用户所有者(vag
 
 ​                                     **r-x**: vgroup组以外的其他用户的权限							
 
+![权限1](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-202601301542545.png)
 
-
-![权限1](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171301840.png)
 
 
 
@@ -471,8 +471,7 @@ R：读取权限  （４），如果是目录，用户可以浏览目录
 W ：写权限　（２），如果是目录，用户可以删除、移动目录内的文件
 X: ：执行权限（１），如果是目录，则表示可进入此目录，如果是bash命令，则表示可以执行
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171301021.png" alt="权限2" style="zoom:50%;" />
-
+![权限2.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-权限2.png)
 
 
 ### **改变文件权限**
@@ -667,9 +666,7 @@ vi  文件名
 
 基本上 vi/vim 共分为三种模式，分别是**命令模式（Command mode）**，**输入模式（Insert mode）**和**底线命令模式（Last line mode）**。 
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171300547.png" alt="vim工作模式" style="zoom: 50%;" />
-
-
+![vim工作模式.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-vim工作模式.png)
 
 
 

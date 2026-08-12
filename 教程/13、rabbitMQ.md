@@ -1,5 +1,7 @@
 ---
 typora-root-url: 图例资料
+title: 13、rabbitMQ
+updateDate: 2026-01-30 15:54:49
 ---
 
 # 一、消息队列
@@ -52,10 +54,7 @@ typora-root-url: 图例资料
 一对一，消费者主动拉取数据，消息收到后消息清除。	
 
 消息生产者生产消息发送到Queue中，然后消息消费者从Queue中取出并且消费消息。消息被消费以后， queue 中不再有存储，所以消息消费者不可能消费到已经被消费的消息。Queue 支持存在多个消费者，但是对一个消息而言，只会有一个消费者可以消费。最典型的例子就是订单处理系统，多个订单处理器可以同时工作，但是对于一个特定的订单，只有其中一个订单处理器可以拿到该订单进行处理。
-
-![01.02.点对点消息](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171838497.png)
-
-![01.02.点对点消息](/C:/Users/%E5%A4%A7%E6%B5%B7/AppData/Roaming/Typora/typora-user-images/image-20240219094015254.png)
+![01.02.点对点消息.png](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-01.02.点对点消息.png)
 
 ### 3.2 发布-订阅消息系统
 

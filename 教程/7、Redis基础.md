@@ -1,5 +1,7 @@
 ---
 几typora-root-url: images
+title: 7、Redis基础
+updateDate: 2026-01-30 15:52:16
 ---
 
 # Redis基础
@@ -74,23 +76,26 @@ expire：全局操作，对所有key都起作用，设置key的有效事件
 
 ### lists
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171310250.png" alt="02.lists" style="zoom:50%;" />
+![02.lists.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-02.lists.png)
 
 ### set
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171311456.png" alt="03.set操作" style="zoom:50%;" />
+![03.set操作.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-03.set操作.png)
 
 ### sorted set
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171311896.png" alt="05.sortedSet" style="zoom:50%;" />
+![05.sortedSet.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-05.sortedSet.png)
+
 
 ### hash
 
-<img src="https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171311820.png" alt="04.hash操作" style="zoom:50%;" />
+![04.hash操作.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-04.hash操作.png)
+
 
 ### bitmap
 
-![06.bitmap](https://my-picture-aa.oss-cn-nanjing.aliyuncs.com/img/202308171311836.png)
+![06.bitmap.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2026-01-30-06.bitmap.png)
+
 
 
 

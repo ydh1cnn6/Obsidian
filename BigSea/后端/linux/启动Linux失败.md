@@ -1,3 +1,6 @@
+---
+title: 启动Linux失败
+---
 ## <font style="color:rgb(34, 34, 38);">1、VirtualBox搭建虚拟机可能遇到的坑</font>
 Failed to get device handle and/or partition ID for 0000000001ee4e20 (hPartitionDevice=0000000000000ad5, Last=0xc0000002/1) (VERR_NEM_VM_CREATE_FAILED).  
 **<font style="color:rgb(77, 77, 77);">翻译：不能为虚拟电脑 ubuntu_打开一个新任务</font>**

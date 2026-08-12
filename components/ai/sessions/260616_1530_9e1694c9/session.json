@@ -1,0 +1,35 @@
+{
+  "id": "260616_1530_9e1694c9",
+  "title": "",
+  "modelId": null,
+  "createTime": 1781595015817,
+  "updateTime": 1781595015817,
+  "metadata": {
+    "mode": "Ask"
+  },
+  "agentDefinition": {
+    "id": "$default",
+    "name": "ReAct",
+    "systemPrompt": "",
+    "maxLoopIterations": 50,
+    "tools": [
+      "ls",
+      "glob",
+      "grep",
+      "read_file",
+      "write_file",
+      "edit_file",
+      "delete_file",
+      "move_file",
+      "web_fetch",
+      "execute_script",
+      "open_file",
+      "analysis_media",
+      "todo_write",
+      "shell"
+    ],
+    "autoApproveTools": [
+      "open_file"
+    ]
+  }
+}

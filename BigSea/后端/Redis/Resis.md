@@ -1,3 +1,6 @@
+---
+title: Resis
+---
 ```java
 stringRedisTemplate.opsForValue.setIfAbsent("aaa","1",expire,TimeUint.SECONDS)
 ```

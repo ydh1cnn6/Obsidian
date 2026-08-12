@@ -341,3 +341,19 @@ iconColor: "<%= iconColor %>"
 效果图：
 ![image.png|300](https://raw.githubusercontent.com/ydh1cnn6/pic/master/2025-12-15-202512151013927.png)
 打开方式：ctrl+P搜索`quite outline`
+
+
+
+# 主题
+style seting 插件
+
+
+
+
+# 自定义插件
+## 。。。。
+
+## 重新编译
+tsc
+
+

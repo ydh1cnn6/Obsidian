@@ -1,3 +1,6 @@
+---
+title: windows程序开机自启动
+---
 1、新建批处理文件 `start_nginx.bat`，内容如下：
 
 ```sh

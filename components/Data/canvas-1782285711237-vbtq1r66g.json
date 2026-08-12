@@ -1,0 +1,91 @@
+{
+  "canvasId": "canvas-1782285711237-vbtq1r66g",
+  "layout": {
+    "type": "flow",
+    "options": {
+      "gap": 8,
+      "padding": 16
+    }
+  },
+  "components": [
+    {
+      "id": "comp-1782285716834-vehyzxane",
+      "type": "button",
+      "props": {
+        "text": "按钮",
+        "color": "#3B82F6",
+        "variant": "primary",
+        "size": "medium",
+        "onClick": ""
+      },
+      "layoutConfig": {
+        "x": -240,
+        "y": -80,
+        "transform": "translate(-240px, -80px)"
+      }
+    },
+    {
+      "id": "comp-1782285744859-9mbuw6r2o",
+      "type": "toggle",
+      "props": {
+        "checked": false,
+        "label": "开关",
+        "disabled": false
+      },
+      "layoutConfig": {
+        "x": -240,
+        "y": 240,
+        "transform": "translate(-240px, 240px)"
+      }
+    },
+    {
+      "id": "comp-1782285762657-32momf9ce",
+      "type": "input",
+      "props": {
+        "placeholder": "请输入...",
+        "value": "",
+        "type": "text",
+        "width": 200
+      },
+      "layoutConfig": {
+        "x": 320,
+        "y": -160,
+        "transform": "translate(320px, -160px)"
+      }
+    },
+    {
+      "id": "comp-1782285771748-kh0rh3iih",
+      "type": "image",
+      "props": {
+        "src": "https://rewards.bing.com/rewardscdn/images/rewards/bnp/BNP_worldcupprediction_CN_240x135.png",
+        "alt": "图片",
+        "width": 200,
+        "height": 150,
+        "borderRadius": 4,
+        "objectFit": "cover"
+      },
+      "layoutConfig": {
+        "x": 240,
+        "y": 0,
+        "transform": "translate(240px, 0px)"
+      }
+    },
+    {
+      "id": "comp-1782285787896-6gon95klp",
+      "type": "button",
+      "props": {
+        "text": "按钮",
+        "color": "#3B82F6",
+        "variant": "primary",
+        "size": "medium",
+        "onClick": ""
+      },
+      "layoutConfig": {
+        "x": -240,
+        "y": 0,
+        "transform": "translate(-240px, 0px)"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

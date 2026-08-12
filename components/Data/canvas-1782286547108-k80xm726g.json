@@ -1,0 +1,124 @@
+{
+  "canvasId": "canvas-1782286547108-k80xm726g",
+  "layout": {
+    "type": "flow",
+    "options": {
+      "gap": 8,
+      "padding": 16
+    }
+  },
+  "components": [
+    {
+      "id": "comp-1782287366126-hsmqazi1v",
+      "type": "image",
+      "props": {
+        "src": "https://rewards.bing.com/rewardscdn/images/rewards/bnp/BNP_worldcupprediction_CN_240x135.png",
+        "alt": "图片",
+        "width": 200,
+        "height": 150,
+        "borderRadius": 4,
+        "objectFit": "cover"
+      },
+      "layoutConfig": {
+        "x": 640,
+        "y": 0,
+        "transform": "translate(640px, 0px)",
+        "width": "0px"
+      }
+    },
+    {
+      "id": "comp-1782287410311-4mq31k37e",
+      "type": "input",
+      "props": {
+        "placeholder": "12313123213",
+        "value": "",
+        "type": "text",
+        "width": 200
+      },
+      "layoutConfig": {
+        "x": 160,
+        "y": 0,
+        "transform": "translate(160px, 0px)"
+      }
+    },
+    {
+      "id": "comp-1782287414609-w684ccn6j",
+      "type": "button",
+      "props": {
+        "text": "按钮",
+        "color": "#3B82F6",
+        "variant": "primary",
+        "size": "medium",
+        "onClick": ""
+      },
+      "layoutConfig": {
+        "x": -160,
+        "y": 480,
+        "transform": "translate(-160px, 480px)"
+      }
+    },
+    {
+      "id": "comp-1782287419356-k99hnftje",
+      "type": "text",
+      "props": {
+        "content": "文本内容",
+        "fontSize": 14,
+        "fontWeight": "normal",
+        "color": "inherit",
+        "align": "left"
+      },
+      "layoutConfig": {
+        "x": 0,
+        "y": 80,
+        "transform": "translate(0px, 80px)"
+      }
+    },
+    {
+      "id": "comp-1782287424374-o7xiamzkp",
+      "type": "toggle",
+      "props": {
+        "checked": true,
+        "label": "开关",
+        "disabled": false
+      },
+      "layoutConfig": {
+        "x": -160,
+        "y": 160,
+        "transform": "translate(-160px, 160px)"
+      }
+    },
+    {
+      "id": "comp-1782287429190-jcor3yhoz",
+      "type": "text",
+      "props": {
+        "content": "文本内容",
+        "fontSize": 14,
+        "fontWeight": "normal",
+        "color": "inherit",
+        "align": "left"
+      },
+      "layoutConfig": {
+        "x": -160,
+        "y": 160,
+        "transform": "translate(-160px, 160px)"
+      }
+    },
+    {
+      "id": "comp-1782287432272-4z4vgaiye",
+      "type": "button",
+      "props": {
+        "text": "按钮121231123",
+        "color": "#3B82F6",
+        "variant": "primary",
+        "size": "medium",
+        "onClick": ""
+      },
+      "layoutConfig": {
+        "x": -480,
+        "y": 80,
+        "transform": "translate(-480px, 80px)"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

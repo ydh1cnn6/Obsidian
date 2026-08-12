@@ -1,0 +1,159 @@
+{
+  "components": [
+    {
+      "id": "23d0e4a9-6639-4ce2-b8a0-60a7f4d99e7b",
+      "type": "multi",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-09T06:29:20.071Z",
+      "updateAt": "2026-03-13T09:12:53.710Z",
+      "components": [
+        {
+          "componentId": "dc0866d6-7cc2-4f4a-a7f2-5fba04cfcd5f",
+          "layout": {
+            "mobile": {
+              "x": 0,
+              "y": 0,
+              "w": 4,
+              "h": 4
+            },
+            "laptop": {
+              "x": 0,
+              "y": 0,
+              "w": 11,
+              "h": 15
+            }
+          }
+        },
+        {
+          "componentId": "0a6026ea-c299-484f-be2d-52824269c245",
+          "layout": {
+            "mobile": {
+              "x": 0,
+              "y": 4,
+              "w": 4,
+              "h": 4
+            },
+            "laptop": {
+              "x": 0,
+              "y": 15,
+              "w": 4,
+              "h": 4
+            }
+          }
+        }
+      ],
+      "layoutType": "column",
+      "locked": true,
+      "layoutOptions": {}
+    },
+    {
+      "id": "dc0866d6-7cc2-4f4a-a7f2-5fba04cfcd5f",
+      "type": "multi",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-09T06:47:03.174Z",
+      "updateAt": "2026-02-09T07:19:09.530Z",
+      "components": [
+        {
+          "componentId": "20bc3b2c-7920-4c6f-98da-b243b94a2f9c",
+          "layout": {
+            "mobile": {
+              "x": 0,
+              "y": 0,
+              "w": 4,
+              "h": 4
+            },
+            "laptop": {
+              "x": 0,
+              "y": 0,
+              "w": 4,
+              "h": 4
+            }
+          }
+        },
+        {
+          "componentId": "bc93dfa3-b1a9-4f06-8262-f9fe47115908",
+          "layout": {
+            "mobile": {
+              "x": 0,
+              "y": 4,
+              "w": 4,
+              "h": 4
+            },
+            "laptop": {
+              "x": 4,
+              "y": 0,
+              "w": 4,
+              "h": 4
+            }
+          }
+        }
+      ],
+      "layoutType": "grid",
+      "locked": true,
+      "layoutOptions": {}
+    },
+    {
+      "id": "20bc3b2c-7920-4c6f-98da-b243b94a2f9c",
+      "type": "time",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-09T06:47:47.473Z",
+      "updateAt": "2026-02-09T06:47:47.473Z",
+      "showLunar": false,
+      "hideDateInfo": false,
+      "hideSeconds": false,
+      "hideProgress": false,
+      "semanticTime": false
+    },
+    {
+      "id": "bc93dfa3-b1a9-4f06-8262-f9fe47115908",
+      "type": "attachments",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-09T06:49:28.539Z",
+      "updateAt": "2026-02-09T06:49:28.539Z",
+      "attachmentSource": "All",
+      "attachmentType": "Image",
+      "fileExensions": [],
+      "specifiedFilePath": "",
+      "sortField": "default",
+      "sortDirection": "asc"
+    },
+    {
+      "id": "0a6026ea-c299-484f-be2d-52824269c245",
+      "type": "multi",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-10T08:05:12.855Z",
+      "updateAt": "2026-02-10T08:05:12.855Z",
+      "components": [],
+      "layoutType": "tab",
+      "locked": false,
+      "layoutOptions": {}
+    }
+  ],
+  "rootComponentId": "23d0e4a9-6639-4ce2-b8a0-60a7f4d99e7b",
+  "version": 3.1
+}

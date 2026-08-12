@@ -1,3 +1,6 @@
+---
+title: mybatis数据库
+---
 1、连接多数据库
 
 [空白/mybatis多数据连接](https://gitee.com/clearpp/multiDatabase.git)

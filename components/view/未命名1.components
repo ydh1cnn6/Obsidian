@@ -1,0 +1,124 @@
+{
+  "components": [
+    {
+      "id": "5fe06a95-44e0-40dc-b1cf-20e45b2b2bcc",
+      "type": "multi",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-10T08:07:11.448Z",
+      "updateAt": "2026-02-14T03:14:12.187Z",
+      "components": [
+        {
+          "componentId": "6e9292b1-0667-4a3d-af77-bb73c527c387",
+          "layout": {
+            "mobile": {
+              "x": 0,
+              "y": 0,
+              "w": 4,
+              "h": 4
+            },
+            "laptop": {
+              "x": 4,
+              "y": 13,
+              "w": 4,
+              "h": 4
+            }
+          }
+        },
+        {
+          "componentId": "9e3c3a11-d0c3-4d33-a0a6-515dd53092a1"
+        },
+        {
+          "componentId": "861506aa-480b-4373-b891-d3109e6513b7",
+          "layout": {
+            "mobile": {
+              "x": 0,
+              "y": 0,
+              "w": 4,
+              "h": 4
+            },
+            "laptop": {
+              "x": 0,
+              "y": 0,
+              "w": 4,
+              "h": 4
+            }
+          }
+        }
+      ],
+      "layoutType": "verticalTab",
+      "locked": false,
+      "layoutOptions": {}
+    },
+    {
+      "id": "9e3c3a11-d0c3-4d33-a0a6-515dd53092a1",
+      "type": "time",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": true,
+      "createAt": "2026-02-10T08:08:05.619Z",
+      "updateAt": "2026-02-12T14:13:34.662Z",
+      "showLunar": true,
+      "hideDateInfo": false,
+      "hideSeconds": false,
+      "hideProgress": false,
+      "semanticTime": false,
+      "backgroundImage": {
+        "url": "",
+        "blurDegree": 100,
+        "fit": "cover"
+      },
+      "darkBackgroundColor": "radial-gradient(circle at center, #000000 18.00%,#000000 78.00%,#afca16 100.00%)",
+      "backgroundColor": "radial-gradient(circle at center, #436636 57.00%,#f7ce68 92.00%)"
+    },
+    {
+      "id": "6e9292b1-0667-4a3d-af77-bb73c527c387",
+      "type": "countdown",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-12T15:08:29.312Z",
+      "updateAt": "2026-02-12T15:08:29.312Z",
+      "repeatType": "none",
+      "pictureFit": "cover",
+      "picturePosition": "left",
+      "showEndDateTime": true,
+      "endDayOfWeek": 0,
+      "endHour": 0,
+      "endMinute": 0,
+      "endSecond": 0
+    },
+    {
+      "id": "861506aa-480b-4373-b891-d3109e6513b7",
+      "type": "countdown",
+      "titleAlign": "center",
+      "tabTitle": "",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-13T03:35:29.719Z",
+      "updateAt": "2026-02-13T03:35:29.719Z",
+      "repeatType": "none",
+      "pictureFit": "cover",
+      "picturePosition": "left",
+      "showEndDateTime": true,
+      "endDayOfWeek": 0,
+      "endHour": 0,
+      "endMinute": 0,
+      "endSecond": 0
+    }
+  ],
+  "rootComponentId": "5fe06a95-44e0-40dc-b1cf-20e45b2b2bcc",
+  "version": 3.1
+}

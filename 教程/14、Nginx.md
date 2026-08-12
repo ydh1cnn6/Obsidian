@@ -1,5 +1,6 @@
 ---
 typora-root-url: 图例
+title: 14、Nginx
 ---
 ```
 njcb1234

@@ -1,0 +1,90 @@
+{
+  "id": "component-5ei3a0u7r",
+  "type": "multi",
+  "titleAlign": "center",
+  "tabTitle": "component-5ei3a0u7r",
+  "maxWidthRatio": -1,
+  "showBorder": false,
+  "showTitle": true,
+  "showShadow": false,
+  "createAt": "2026-02-11T01:11:21.943Z",
+  "updateAt": "2026-02-14T06:19:12.917Z",
+  "components": [
+    {
+      "id": "component-doy0ke2cf",
+      "type": "time",
+      "titleAlign": "center",
+      "tabTitle": "component-5ei3a0u7r",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-12T08:24:04.200Z",
+      "updateAt": "2026-02-12T08:24:04.200Z",
+      "components": [],
+      "layoutType": "grid",
+      "locked": false,
+      "layoutOptions": {},
+      "showLunar": false,
+      "hideDateInfo": false,
+      "hideSeconds": false,
+      "hideProgress": false,
+      "semanticTime": false,
+      "position": {
+        "left": 102.874,
+        "top": 183.878
+      },
+      "size": {
+        "width": 314.956,
+        "height": 162.983
+      },
+      "image": "",
+      "positionX": 50,
+      "positionY": 50,
+      "blur": 0,
+      "fillMode": "auto",
+      "bgColor": "linear-gradient(to right, rgba(67, 233, 123, 1) 0%, rgba(56, 249, 215, 1) 50%, rgba(0, 0, 255, 1) 100%)"
+    },
+    {
+      "id": "component-cm17z6mb3",
+      "type": "time",
+      "titleAlign": "center",
+      "tabTitle": "未命名",
+      "maxWidthRatio": -1,
+      "showBorder": false,
+      "showTitle": true,
+      "showShadow": false,
+      "createAt": "2026-02-14T03:38:04.463Z",
+      "updateAt": "2026-02-14T03:38:04.463Z",
+      "components": [],
+      "layoutType": "grid",
+      "locked": false,
+      "layoutOptions": {},
+      "showLunar": false,
+      "hideDateInfo": false,
+      "hideSeconds": false,
+      "hideProgress": false,
+      "semanticTime": false,
+      "position": {
+        "left": 417.83,
+        "top": 377.858
+      },
+      "size": {
+        "width": 352.926,
+        "height": 207.973
+      },
+      "image": "",
+      "positionX": 50,
+      "positionY": 50,
+      "blur": 0,
+      "fillMode": "auto",
+      "bgColor": "rgba(0, 0, 255, 1)"
+    }
+  ],
+  "layoutType": "grid",
+  "locked": false,
+  "layoutOptions": {},
+  "version": 3.1,
+  "borderStyle": "none",
+  "shadowStyle": "none"
+}

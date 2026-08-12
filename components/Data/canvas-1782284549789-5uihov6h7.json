@@ -1,0 +1,71 @@
+{
+  "canvasId": "canvas-1782284549789-5uihov6h7",
+  "layout": {
+    "type": "flow",
+    "options": {
+      "gap": 8,
+      "padding": 16
+    }
+  },
+  "components": [
+    {
+      "id": "comp-1782284557495-0535aa0kw",
+      "type": "button",
+      "props": {
+        "text": "按钮",
+        "color": "#3B82F6",
+        "variant": "primary",
+        "size": "medium",
+        "onClick": ""
+      },
+      "layoutConfig": {
+        "transform": "translate(480px, 0px)",
+        "x": 480,
+        "y": 0
+      }
+    },
+    {
+      "id": "comp-1782284602118-fwj25hlpc",
+      "type": "input",
+      "props": {
+        "placeholder": "请输入...",
+        "value": " 1",
+        "type": "text",
+        "width": 200
+      },
+      "layoutConfig": {
+        "x": 80,
+        "y": 80,
+        "transform": "translate(80px, 80px)"
+      }
+    },
+    {
+      "id": "comp-1782284623800-1qlj4m1mq",
+      "type": "toggle",
+      "props": {
+        "checked": false,
+        "label": "开关",
+        "disabled": false
+      },
+      "layoutConfig": {
+        "transform": "translate(0px, 9px)"
+      }
+    },
+    {
+      "id": "comp-1782284715318-kalfl2pcv",
+      "type": "image",
+      "props": {
+        "src": "https://rewards.bing.com/rewardscdn/images/rewards/bnp/BNP_worldcupprediction_CN_240x135.png",
+        "alt": "图片",
+        "width": 200,
+        "height": 150,
+        "borderRadius": 4,
+        "objectFit": "cover"
+      },
+      "layoutConfig": {
+        "transform": "translate(340px, -2px)"
+      }
+    }
+  ],
+  "version": "1.0.0"
+}
