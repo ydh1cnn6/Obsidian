@@ -1,0 +1,21 @@
+{
+  "fields": [
+    {
+      "name": "file.basename"
+    },
+    {
+      "name": "file.ctime"
+    }
+  ],
+  "views": [
+    {
+      "id": "default-table-view",
+      "name": "表格",
+      "type": "table",
+      "visibleFields": [
+        "file.basename",
+        "file.ctime"
+      ]
+    }
+  ]
+}
