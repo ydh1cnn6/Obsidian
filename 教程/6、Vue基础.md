@@ -1,5 +1,6 @@
 ---
 typora-root-url: images
+updateDate: 2026-08-18 17:11:44
 ---
 
 # Vue概述
@@ -334,6 +335,7 @@ once: 事件只触发一次
             <button @click="add">add</button>
             <button @click="deleteSelect">add</button>
         </div>
+
         <table>
             <tr v-for="user in users">
                 <td>{{user.id}}</td>
