@@ -74,16 +74,6 @@
 			"y":-880,
 			"width":380,
 			"height":60
-		},
-		{
-			"id":"c23aee1a57748535",
-			"type":"file",
-			"file":"未命名0616.md",
-			"styleAttributes":{"border":"invisible"},
-			"x":-4600,
-			"y":-1250,
-			"width":400,
-			"height":400
 		}
 	],
 	"edges":[],
