@@ -1,3 +1,6 @@
+---
+title: svn忘记密码、查看密码
+---
 1. 打开 TortoiseSVN 的设置（Settings）。
 2. 点击“已保存数据”（Saved Data）。
 3. 选择“认证数据”（Authentication Data）。

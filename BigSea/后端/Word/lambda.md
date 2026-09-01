@@ -1,3 +1,6 @@
+---
+title: lambda
+---
 1、Consumer
 
 ```java
