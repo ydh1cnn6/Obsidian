@@ -1,6 +1,8 @@
 ---
 title: Kafka
+updateDate: 2026-09-02 16:04:47
 ---
+
 1、JMS（java message service）结构
 
 消息头
