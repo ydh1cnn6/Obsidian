@@ -57,7 +57,8 @@ async function getGeoLocationInfo() {
 	  console.log("获取地理位置成功：", json);
       return {
         country: json.country || "",
-        city: json.city || ""
+        city: json.city || "",
+		ip: json.ip || ""
       };
     } else {
       throw new Error("返回数据中缺少城市信息");

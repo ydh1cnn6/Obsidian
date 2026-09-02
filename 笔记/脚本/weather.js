@@ -77,8 +77,10 @@ function getWindForceLevel(ms) {
 async function getWeather(country_city) {
     let city = '';
 	let country = '';
+	let IP = '';
     city = country_city.city || ''; // 安全访问属性（避免未定义报错）
 	country = country_city.country || ''; // 安全访问属性（避免未定义报错）
+	IP = country_city.IP || ''; // 安全访问属性（避免未定义报错）
 
     // 检查国家是否为"China"且城市非空
     if (country !== 'China' || (city === '' || city === '南京市')) {
@@ -253,7 +255,8 @@ WindSpeedDesc: ${windLevelInfo.cnDescription}
 TempRange(℃): ${weather.mintempC}-${weather.maxtempC}
 SunHour: ${weather.sunHour}h
 Sunrise: ${astronomy.sunrise}
-Sunset: ${astronomy.sunset}`
+Sunset: ${astronomy.sunset}
+IP: ${IP}`
             return output_text
         })
 
