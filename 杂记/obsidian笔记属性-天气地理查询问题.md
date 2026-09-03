@@ -1,5 +1,5 @@
 ---
-title: obsidian笔记属性-天气查询问题
+title: obsidian笔记属性-天气地理查询问题
 tags:
   - 笔记
   - 未命名
@@ -7,7 +7,7 @@ author: BigSea
 email: 2834637197@qq.com
 封面: ""
 createDate: 2026-09-03 09:28:15
-updateDate: 2026-09-03 14:09:43
+updateDate: 2026-09-03 17:57:24
 week: 第36周｜星期四
 Country: China
 City: NanJing
