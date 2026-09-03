@@ -1,5 +1,5 @@
 ---
-title: 笔记
+title: obsidian笔记属性-天气查询问题
 tags:
   - 笔记
   - 未命名
