@@ -53,6 +53,8 @@ async function getGeoLocationInfo() {
     const json = response.json; // requestUrl 的响应数据在 .json 字段中
 
     // 检查数据是否存在
+
+	
     if (json?.city) {
 	  console.log("获取地理位置成功：", json);
       return {

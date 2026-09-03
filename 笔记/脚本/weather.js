@@ -78,9 +78,12 @@ async function getWeather(country_city) {
     let city = '';
 	let country = '';
 	let IP = '';
+	let ipCountryOrProv = country_city.country || '';
+	let ipCity = country_city.city || '';
+	
     city = country_city.city || ''; // 安全访问属性（避免未定义报错）
 	country = country_city.country || ''; // 安全访问属性（避免未定义报错）
-	IP = country_city.IP || ''; // 安全访问属性（避免未定义报错）
+	IP = country_city.ip || ''; // 安全访问属性（避免未定义报错）
 
     // 检查国家是否为"China"且城市非空
     if (country !== 'China' || (city === '' || city === '南京市')) {
@@ -256,7 +259,10 @@ TempRange(℃): ${weather.mintempC}-${weather.maxtempC}
 SunHour: ${weather.sunHour}h
 Sunrise: ${astronomy.sunrise}
 Sunset: ${astronomy.sunset}
-IP: ${IP}`
+IP: ${IP}
+IP归属地: ${ipCountryOrProv}
+IP归属城市: ${ipCity}`
+
             return output_text
         })
 
