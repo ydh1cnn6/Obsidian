@@ -245,6 +245,10 @@ async function getWeather(result) {
 			
             const output_text = `
 ##### Current
+coordinates: "${lat}, ${lng}"
+IP: ${IP}
+IP归属地: ${ipCountryOrProv}
+IP归属城市: ${ipCity}
 Country: ${country}
 City: ${city}
 Weather: ${weatherIcon}
@@ -261,11 +265,7 @@ WindSpeedDesc: ${windLevelInfo.cnDescription}
 TempRange(℃): ${weather.mintempC}-${weather.maxtempC}
 SunHour: ${weather.sunHour}h
 Sunrise: ${astronomy.sunrise}
-Sunset: ${astronomy.sunset}
-coordinates: "${lat}, ${lng}"
-IP: ${IP}
-IP归属地: ${ipCountryOrProv}
-IP归属城市: ${ipCity}`
+Sunset: ${astronomy.sunset}`
 
             return output_text
         })

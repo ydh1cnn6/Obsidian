@@ -1,4 +1,4 @@
-function getGeoLocationInfo() {
+function getGeoLocationInfo2() {
 	//https://r.inews.qq.com/api/ip2city	城市-中文
 	//https://api.vore.top/api/IPdata?ip=	城市-中文
 	
@@ -81,7 +81,7 @@ async function getGeoLocationInfo() {
       method: "GET"
     });
 
-    const json = response.json;
+	const json = response.json; // requestUrl 的响应数据在 .json 字段中
 
 	if (json?.status === 0 && json?.result?.ad_info?.city) {
 	  console.log("获取地理位置成功：", json);
@@ -109,4 +109,4 @@ async function getGeoLocationInfo() {
   }
 }
 module.exports = getGeoLocationInfo;
-module.exports = getGeoLocationInfo1;
+//module.exports = getGeoLocationInfo1;

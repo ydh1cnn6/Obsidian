@@ -1,0 +1,6 @@
+views:
+  - type: map
+    name: 表格
+    mapHeight: 340
+    defaultZoom: 3
+    maxZoom: 0
