@@ -74,19 +74,22 @@ function getWindForceLevel(ms) {
 
 
 
-async function getWeather(country_city) {
+async function getWeather(result) {
     let city = '';
 	let country = '';
 	let IP = '';
-	let ipCountryOrProv = country_city.country || '';
-	let ipCity = country_city.city || '';
+	let ipCountryOrProv = result.country || '';
+	let ipCity = result.city || '';
 	
-    city = country_city.city || ''; // 安全访问属性（避免未定义报错）
-	country = country_city.country || ''; // 安全访问属性（避免未定义报错）
-	IP = country_city.ip || ''; // 安全访问属性（避免未定义报错）
+	let lat = result.location?.lat ?? null;
+	let lng = result.location?.lng ?? null;
+	
+    city = result.city || ''; // 安全访问属性（避免未定义报错）
+	country = result.country || ''; // 安全访问属性（避免未定义报错）
+	IP = result.ip || ''; // 安全访问属性（避免未定义报错）
 
     // 检查国家是否为"China"且城市非空
-    if (country !== 'China' || (city === '' || city === '南京市')) {
+    if (country !== 'China' || country !== '中国' || (city === '' || city === '南京市')) {
         city = 'NanJing'; // 默认使用南京
 		country = 'China'
     }
@@ -259,6 +262,7 @@ TempRange(℃): ${weather.mintempC}-${weather.maxtempC}
 SunHour: ${weather.sunHour}h
 Sunrise: ${astronomy.sunrise}
 Sunset: ${astronomy.sunset}
+coordinates: "${lat}, ${lng}"
 IP: ${IP}
 IP归属地: ${ipCountryOrProv}
 IP归属城市: ${ipCity}`

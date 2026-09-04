@@ -42,19 +42,18 @@ function getGeoLocationInfo() {
   }
 
 
-async function getGeoLocationInfo() {
+//不支持地理信息
+async function getGeoLocationInfo1() {
   try {
     // 使用 Obsidian 内置的 requestUrl（无 CORS 限制）
     const response = await requestUrl({
-      url: "https://r.inews.qq.com/api/ip2city",
+		//url: "https://apis.map.qq.com/ws/location/v1/ip?key=4ZVBZ-DTUWJ-SBYFC-XVAZF-PBVWV-HZFST	",
+      urlre: "https://r.inews.qq.com/api/ip2city",
       method: "GET"
     });
 
     const json = response.json; // requestUrl 的响应数据在 .json 字段中
-
     // 检查数据是否存在
-
-	
     if (json?.city) {
 	  console.log("获取地理位置成功：", json);
       return {
@@ -71,4 +70,43 @@ async function getGeoLocationInfo() {
     return { country: "", city: "" };
   }
 }
+
+async function getGeoLocationInfo() {
+  try {
+    // 使用 Obsidian 内置的 requestUrl（无 CORS 限制）
+    const response = await requestUrl({
+		//https://apis.map.qq.com/ws/location/v1/ip
+		url: "https://apis.map.qq.com/ws/location/v1/ip?output=json&key=4ZVBZ-DTUWJ-SBYFC-XVAZF-PBVWV-HZFST",
+      //url: "https://r.inews.qq.com/api/ip2city",
+      method: "GET"
+    });
+
+    const json = response.json;
+
+	if (json?.status === 0 && json?.result?.ad_info?.city) {
+	  console.log("获取地理位置成功：", json);
+	  return {
+		ip: json.result.ip ?? "",
+		location: {
+		  lat: json.result.location?.lat ?? null,
+		  lng: json.result.location?.lng ?? null
+		},
+		country: json.result.ad_info?.nation ?? "",
+		province: json.result.ad_info?.province ?? "",
+		city: json.result.ad_info?.city ?? "",
+		district: json.result.ad_info?.district ?? "",
+		adcode: json.result.ad_info?.adcode ?? null,
+		nation_code: json.result.ad_info?.nation_code ?? null
+	  };
+	} else {
+	  throw new Error("返回数据中缺少城市信息");
+	}
+
+  } catch (error) {
+    console.error("获取地理位置失败：", error);
+    // 错误时也返回对象（保持类型一致）
+    return { country: "", city: "" };
+  }
+}
 module.exports = getGeoLocationInfo;
+module.exports = getGeoLocationInfo1;
