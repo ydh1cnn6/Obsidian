@@ -1,0 +1,17 @@
+views:
+  - type: map
+    name: 表格
+    filters:
+      and:
+        - file.ext == "md"
+        - "!file.path.isEmpty()"
+        - "!coordinates.isEmpty()"
+    mapHeight: 480
+    defaultZoom: 11
+    maxZoom: 18
+    coordinates: note.coordinates
+    markerIcon: note.icon
+    markerColor: note.iconColor
+    center: "[32.01295, 118.7276]"
+    mapTiles:
+      - https://tiles.openfreemap.org/styles/liberty

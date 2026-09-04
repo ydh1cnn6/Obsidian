@@ -7,20 +7,9 @@
 			"x":-3780,
 			"y":-1370,
 			"width":280,
-			"height":380,
+			"height":290,
 			"color":"3",
 			"label":"动漫"
-		},
-		{
-			"id":"2755cb4bdcaef2e3",
-			"type":"group",
-			"styleAttributes":{"border":"invisible"},
-			"x":-4060,
-			"y":-900,
-			"width":540,
-			"height":100,
-			"color":"5",
-			"label":"快捷链接"
 		},
 		{
 			"id":"659b07f29f8cf08e",
@@ -29,9 +18,20 @@
 			"x":-4060,
 			"y":-1370,
 			"width":280,
-			"height":190,
+			"height":290,
 			"color":"5",
 			"label":"笔记"
+		},
+		{
+			"id":"2755cb4bdcaef2e3",
+			"type":"group",
+			"styleAttributes":{"border":"invisible"},
+			"x":-3500,
+			"y":-1470,
+			"width":420,
+			"height":100,
+			"color":"5",
+			"label":"快捷链接"
 		},
 		{
 			"id":"349caf4564e39fc1",
@@ -41,7 +41,7 @@
 			"x":-3780,
 			"y":-1370,
 			"width":280,
-			"height":380,
+			"height":290,
 			"color":"3"
 		},
 		{
@@ -56,24 +56,34 @@
 			"color":"#a05454"
 		},
 		{
+			"id":"f3f8345eacdb8b6a",
+			"type":"text",
+			"text":"[10万字总结java面试题和答案](D:\\OneDrive-asd\\wanho\\三阶段\\05.面试题\\10万字总结java面试题和答案.pdf)",
+			"styleAttributes":{"border":"dotted"},
+			"x":-3480,
+			"y":-1440,
+			"width":380,
+			"height":60
+		},
+		{
 			"id":"32951af1c5ee75ba",
 			"type":"file",
 			"file":"笔记/首页工具/最近阅读.base",
 			"styleAttributes":{"border":"invisible"},
 			"x":-4060,
-			"y":-1380,
+			"y":-1365,
 			"width":280,
-			"height":390
+			"height":265
 		},
 		{
-			"id":"f3f8345eacdb8b6a",
-			"type":"text",
-			"text":"[10万字总结java面试题和答案](D:\\OneDrive-asd\\wanho\\三阶段\\05.面试题\\10万字总结java面试题和答案.pdf)",
-			"styleAttributes":{"border":"dotted"},
-			"x":-4040,
-			"y":-880,
-			"width":380,
-			"height":60
+			"id":"9b6c90634ff65521",
+			"type":"file",
+			"file":"笔记/首页工具/地图.base",
+			"styleAttributes":{"border":"invisible"},
+			"x":-4060,
+			"y":-1080,
+			"width":560,
+			"height":290
 		}
 	],
 	"edges":[],
