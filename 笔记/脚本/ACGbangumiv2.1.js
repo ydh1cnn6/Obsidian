@@ -105,47 +105,47 @@ async function imageToBase64(url, cookie) {
  * 主动请求 Bangumi 的验证码图片接口，返回 base64 或 null
  * Bangumi 的验证码图片是页面加载后由 JS 动态请求的，静态 HTML 里拿不到
  */
+/**
+ * 主动请求 Bangumi 的验证码图片接口，返回 base64 或 null
+ * 真实接口：https://bgm.tv/signup/captcha?随机数
+ */
 async function fetchCaptchaBase64(initialCookies) {
-    // 常见接口路径（按优先级尝试）
-    const tryUrls = [
-        "https://bgm.tv/captcha?type=login",
-        "https://bgm.tv/login/captcha",
-        "https://bgm.tv/captcha",
-    ];
-    for (const url of tryUrls) {
-        try {
-            const response = await requestUrl({
-                url: url,
-                method: "GET",
-                headers: {
-                    ...COMMON_HEADERS,
-                    "Cookie": initialCookies,
-                    "Referer": "https://bgm.tv/login",
-                    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-                },
-            });
-            const buffer = response.arrayBuffer;
-            if (buffer && buffer.byteLength > 100) {
-                // 简单判断是否真的是图片（PNG/JPEG/GIF 魔数）
-                const bytes = new Uint8Array(buffer);
-                const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
-                const isJpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
-                const isGif = bytes[0] === 0x47 && bytes[1] === 0x49;
-                if (isPng || isJpg || isGif) {
-                    console.log(`验证码接口命中: ${url}`);
-                    let binary = "";
-                    for (let i = 0; i < bytes.length; i++) {
-                        binary += String.fromCharCode(bytes[i]);
-                    }
-                    return `data:image/png;base64,${btoa(binary)}`;
+    // 构造带随机数的 URL，避免浏览器缓存
+    const randomSuffix = Date.now().toString() + Math.floor(Math.random() * 100000).toString();
+    const url = `https://bgm.tv/signup/captcha?${randomSuffix}`;
+    try {
+        const response = await requestUrl({
+            url: url,
+            method: "GET",
+            headers: {
+                ...COMMON_HEADERS,
+                "Cookie": initialCookies,
+                "Referer": "https://bgm.tv/login",
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            },
+        });
+        const buffer = response.arrayBuffer;
+        if (buffer && buffer.byteLength > 100) {
+            const bytes = new Uint8Array(buffer);
+            // 判断图片魔数：PNG / JPEG / GIF
+            const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+            const isJpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
+            const isGif = bytes[0] === 0x47 && bytes[1] === 0x49;
+            if (isPng || isJpg || isGif) {
+                console.log(`验证码接口命中: ${url}`);
+                let binary = "";
+                for (let i = 0; i < bytes.length; i++) {
+                    binary += String.fromCharCode(bytes[i]);
                 }
+                return `data:image/png;base64,${btoa(binary)}`;
             }
-        } catch (e) {
-            // 该路径不存在，试下一个
-            console.log(`验证码接口 ${url} 不可用: ${e.message}`);
         }
+        console.log("验证码接口返回的不是有效图片");
+        return null;
+    } catch (e) {
+        console.log("请求验证码接口失败:", e.message);
+        return null;
     }
-    return null;
 }
 
 /**
@@ -337,7 +337,7 @@ async function getOrRefreshCookies() {
     // 1. 先尝试已保存的 Cookie
     let cookies = loadSavedCookies();
     if (cookies && await validateCookies(cookies)) {
-        console.log("使用已保存的 Cookie");
+        console.log("使用已保存的 Cookie:\n" + cookies);
         return cookies;
     }
 
@@ -345,10 +345,10 @@ async function getOrRefreshCookies() {
     if (MANUAL_COOKIE && MANUAL_COOKIE.trim() !== "") {
         if (await validateCookies(MANUAL_COOKIE)) {
             saveCookies(MANUAL_COOKIE);
-            console.log("使用手动配置的 MANUAL_COOKIE");
+            console.log("使用手动配置的 MANUAL_COOKIE:\n" + MANUAL_COOKIE);
             return MANUAL_COOKIE;
         } else {
-            console.warn("MANUAL_COOKIE 已失效");
+            console.warn("MANUAL_COOKIE 已失效:\n" + MANUAL_COOKIE);
         }
     }
 
@@ -358,9 +358,10 @@ async function getOrRefreshCookies() {
         if (USER_COOKIE && USER_COOKIE.trim() !== "") {
             if (await validateCookies(USER_COOKIE)) {
                 saveCookies(USER_COOKIE);
-                console.log("使用默认 USER_COOKIE 成功");
+                console.log("使用默认 USER_COOKIE 成功:\n" + USER_COOKIE);
                 return USER_COOKIE;
             } else {
+                console.warn("默认 USER_COOKIE 已失效:\n" + USER_COOKIE);
                 throw new Error("未配置账号密码，且默认 USER_COOKIE 已失效。请在配置区填写 BANGUMI_EMAIL 和 BANGUMI_PASSWORD。");
             }
         } else {
@@ -391,6 +392,8 @@ async function getOrRefreshCookies() {
             captchaValue
         );
 
+        console.log("登录成功，新 Cookie:\n" + newCookies);
+
         if (await validateCookies(newCookies)) {
             saveCookies(newCookies);
             new Notice("Bangumi 登录成功，Cookie 已保存");
@@ -416,6 +419,7 @@ async function getOrRefreshCookies() {
             if (useDefault) {
                 if (await validateCookies(USER_COOKIE)) {
                     saveCookies(USER_COOKIE);
+                    console.log("已切换到默认 Cookie:\n" + USER_COOKIE);
                     new Notice("已切换到默认 Cookie");
                     return USER_COOKIE;
                 } else {
@@ -971,7 +975,7 @@ async function getParagraph(detailUrl) {
     const detailDoc = parseHtmlToDom(detailPage);
     const $ = (s) => detailDoc.querySelector(s);
     const $$ = (s) => detailDoc.querySelectorAll(s);
-	const paragraphbox = $$(".line_list li");
+	const paragraphbox = $$(".prg_list li");
 	
 	let currentType = ""; // 当前章节类型（SP/OP/ED）
 	let TypeNum = 1; // 正篇章节计数
@@ -979,6 +983,7 @@ async function getParagraph(detailUrl) {
 	paragraphbox.forEach(li => {
 		// 识别章节类型标记（"SP"、"OP"、"ED"）
 		// 1. 判断 class 是否包含 'cat'
+		console.log("章节 HTML:", li.outerHTML);
 		const hasCatClass = li.classList.contains('cat');
 
 		// 2. 获取元素文本内容（去除前后空格，避免空格影响判断）
