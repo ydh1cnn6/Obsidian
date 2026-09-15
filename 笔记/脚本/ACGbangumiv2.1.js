@@ -5,26 +5,22 @@
 //特别鸣谢：@ 鬼头明里单推人 及热心观众
 // 感谢 @北漠海 的优化思路及部分代码~
 //modify: 莺空_栩白（解决章节目录部分展示不全问题【非登录状态：章节全量展示；登录状态：筛选已观看章节】、动画导演概率不展示）
-//modify: 新增自动登录功能，移除硬编码 Cookie，改为动态获取并保存
+const USER_COOKIE = `chii_sec_id=OiNqAzd7lqHFA%2Fig3Iyk9N6i8RIhX5L2Pgk; chii_theme=light; chii_cookietime=2592000; prg_display_mode=normal; chii_auth=dQRpmdawWIVmE6xbdzTrOC1dQidZnrir6Z%2BBOcjjiszaUjbY3IKgV5EAwFLBpbvM132oe1XYsaGAcdzBRAMihqXarji99MAoG7qPWg; chii_sid=PSRaW0`;
+//附加有效的参考样式：`chii_sec_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_theme=light; _tea_utm_cache_10000007=undefined; chii_cookietime=2592000; chii_auth=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_searchDateLine=0; chii_sid=xxxxxx`
 
 // ============================== 自动登录配置区 ==============================
 // 请填写你的 Bangumi 账号信息（邮箱和密码），用于 Cookie 失效时自动重新登录。
-// 如果担心安全，可以留空，改为手动在下方 MANUAL_COOKIE 中填入临时 Cookie。
 const BANGUMI_EMAIL = "2834637197@qq.com";      // 你的 Bangumi 登录邮箱
 const BANGUMI_PASSWORD = "qwertasd123";   // 你的 Bangumi 登录密码
 
-// 如果自动登录失败（例如遇到验证码），可以手动填入 Cookie 作为兜底。
-// 格式示例：chii_sec_id=xxx; chii_theme=light; chii_auth=xxx; chii_sid=xxx
+// 如果自动登录失败（例如遇到无法处理的验证码），可以手动填入 Cookie 作为兜底。
 const MANUAL_COOKIE = "";
 
 // Cookie 在 Obsidian 本地存储中的键名
 const COOKIE_STORAGE_KEY = "bangumi_auto_cookies";
 
-// ============================== 全局变量 ==============================
-let QuickAdd;
-let pageNum = 1;
-
-// 注意：这里不再包含硬编码的 Cookie 字段，Cookie 会在 requestGet 中动态添加
+const notice = (msg) => new Notice(msg, 5000);
+const log = (msg) => console.log(msg);
 const COMMON_HEADERS = {
     "Content-Type": "text/html; charset=utf-8",
     'Connection': 'keep-alive',
@@ -42,16 +38,13 @@ const COMMON_HEADERS = {
     'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
 };
 
-const notice = (msg) => new Notice(msg, 5000);
-const log = (msg) => console.log(msg);
-
 module.exports = bangumi;
+
+let QuickAdd;
+let pageNum = 1;
 
 // ============================== 自动登录模块 ==============================
 
-/**
- * 从 Obsidian 本地存储中读取已保存的 Cookie
- */
 function loadSavedCookies() {
     try {
         return localStorage.getItem(COOKIE_STORAGE_KEY) || null;
@@ -60,9 +53,6 @@ function loadSavedCookies() {
     }
 }
 
-/**
- * 将 Cookie 保存到 Obsidian 本地存储
- */
 function saveCookies(cookieString) {
     try {
         localStorage.setItem(COOKIE_STORAGE_KEY, cookieString);
@@ -71,9 +61,6 @@ function saveCookies(cookieString) {
     }
 }
 
-/**
- * 验证 Cookie 是否仍然有效
- */
 async function validateCookies(cookieString) {
     if (!cookieString) return false;
     try {
@@ -86,7 +73,6 @@ async function validateCookies(cookieString) {
             },
         });
         const html = response.text || "";
-        // 登录后页面会包含用户相关的元素
         return html.includes("chii_auth") || html.includes("退出") || (html.includes("user/") && html.includes("nav"));
     } catch (e) {
         return false;
@@ -94,10 +80,147 @@ async function validateCookies(cookieString) {
 }
 
 /**
- * 获取登录页，提取 CSRF Token（字段名 at）和初始会话 Cookie
+ * 下载图片并转为 base64
+ */
+async function imageToBase64(url, cookie) {
+    const response = await requestUrl({
+        url: url,
+        method: "GET",
+        headers: {
+            ...COMMON_HEADERS,
+            "Cookie": cookie,
+            "Referer": "https://bgm.tv/login",
+        },
+    });
+    const buffer = response.arrayBuffer;
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return `data:image/png;base64,${btoa(binary)}`;
+}
+
+/**
+ * 主动请求 Bangumi 的验证码图片接口，返回 base64 或 null
+ * Bangumi 的验证码图片是页面加载后由 JS 动态请求的，静态 HTML 里拿不到
+ */
+async function fetchCaptchaBase64(initialCookies) {
+    // 常见接口路径（按优先级尝试）
+    const tryUrls = [
+        "https://bgm.tv/captcha?type=login",
+        "https://bgm.tv/login/captcha",
+        "https://bgm.tv/captcha",
+    ];
+    for (const url of tryUrls) {
+        try {
+            const response = await requestUrl({
+                url: url,
+                method: "GET",
+                headers: {
+                    ...COMMON_HEADERS,
+                    "Cookie": initialCookies,
+                    "Referer": "https://bgm.tv/login",
+                    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                },
+            });
+            const buffer = response.arrayBuffer;
+            if (buffer && buffer.byteLength > 100) {
+                // 简单判断是否真的是图片（PNG/JPEG/GIF 魔数）
+                const bytes = new Uint8Array(buffer);
+                const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+                const isJpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
+                const isGif = bytes[0] === 0x47 && bytes[1] === 0x49;
+                if (isPng || isJpg || isGif) {
+                    console.log(`验证码接口命中: ${url}`);
+                    let binary = "";
+                    for (let i = 0; i < bytes.length; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return `data:image/png;base64,${btoa(binary)}`;
+                }
+            }
+        } catch (e) {
+            // 该路径不存在，试下一个
+            console.log(`验证码接口 ${url} 不可用: ${e.message}`);
+        }
+    }
+    return null;
+}
+
+/**
+ * 用 DOM 画一个浮层，显示验证码图片和输入框（防止 Esc 触发 QuickAdd 中止）
+ */
+function showCaptchaInput(imageBase64) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.style.cssText =
+            "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;display:flex;justify-content:center;align-items:center;";
+
+        const dialog = document.createElement("div");
+        dialog.style.cssText =
+            "background:var(--background-primary);color:var(--text-normal);padding:20px;border-radius:8px;text-align:center;min-width:280px;box-shadow:0 4px 12px rgba(0,0,0,0.3);";
+
+        const title = document.createElement("h3");
+        title.textContent = "请输入验证码";
+        title.style.cssText = "margin:0 0 10px 0;";
+        dialog.appendChild(title);
+
+        const img = document.createElement("img");
+        img.src = imageBase64;
+        img.style.cssText =
+            "width:150px;height:50px;display:block;margin:10px auto;border:1px solid var(--background-modifier-border);border-radius:4px;";
+        dialog.appendChild(img);
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = "输入验证码";
+        input.style.cssText =
+            "width:100%;padding:6px;margin:10px 0;box-sizing:border-box;border:1px solid var(--background-modifier-border);border-radius:4px;background:var(--background-primary);color:var(--text-normal);";
+        dialog.appendChild(input);
+
+        const btn = document.createElement("button");
+        btn.textContent = "确认";
+        btn.style.cssText =
+            "padding:6px 24px;border-radius:4px;border:none;background:var(--interactive-accent);color:var(--text-on-accent);cursor:pointer;";
+        dialog.appendChild(btn);
+
+        const submit = () => {
+            const value = input.value.trim();
+            if (!value) {
+                input.style.borderColor = "red";
+                return;
+            }
+            document.body.removeChild(overlay);
+            resolve(value);
+        };
+
+        // 关键：阻止 Esc 键传播给 QuickAdd
+        overlay.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                e.stopPropagation();
+                e.preventDefault();
+                document.body.removeChild(overlay);
+                resolve(""); // 返回空字符串，让登录流程失败
+            }
+        }, true); // 使用捕获阶段
+
+        btn.addEventListener("click", submit);
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") submit();
+        });
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        input.focus();
+    });
+}
+
+/**
+ * 获取登录页：解析 formhash、初始 Cookie
  */
 async function fetchLoginPage() {
-    // 第一步：先访问一次首页，获取初始会话 Cookie
+    // 第一步：访问首页，拿初始会话 Cookie
     const initResponse = await requestUrl({
         url: "https://bgm.tv/",
         method: "GET",
@@ -106,9 +229,7 @@ async function fetchLoginPage() {
 
     const initSetCookie = initResponse.headers["set-cookie"] || [];
     const initCookieArray = Array.isArray(initSetCookie) ? initSetCookie : [initSetCookie];
-    const initCookies = initCookieArray
-        .map(c => c.split(";")[0])
-        .join("; ");
+    const initCookies = initCookieArray.map(c => c.split(";")[0]).join("; ");
 
     // 第二步：携带初始 Cookie 请求登录页
     const response = await requestUrl({
@@ -121,27 +242,22 @@ async function fetchLoginPage() {
     });
 
     const html = response.text || "";
-
-    // 解析 CSRF Token
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
-    const atInput = doc.querySelector('input[name="at"]');
-    const csrfToken = atInput ? atInput.value : null;
 
-    if (!csrfToken) {
-        // 调试：输出部分 HTML 内容，方便查看实际结构
-        console.error("登录页 HTML 片段（前2000字符）:", html.substring(0, 2000));
-        throw new Error("无法解析 CSRF Token，登录页结构可能已变化。请查看控制台输出的 HTML 片段。");
+    // 解析 formhash（真正的 CSRF Token）
+    const formhashInput = doc.querySelector('input[name="formhash"]');
+    const formhash = formhashInput ? formhashInput.value : null;
+    if (!formhash) {
+        console.error("登录页 HTML 片段：", html.substring(0, 3000));
+        throw new Error("无法解析 formhash，登录页结构可能已变化");
     }
 
-    // 合并初始 Cookie 和登录页返回的 Cookie
+    // 合并 Cookie
     const setCookieHeaders = response.headers["set-cookie"] || [];
     const cookieArray = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
-    const loginPageCookies = cookieArray
-        .map(c => c.split(";")[0])
-        .join("; ");
+    const loginPageCookies = cookieArray.map(c => c.split(";")[0]).join("; ");
 
-    // 合并去重
     const cookieMap = new Map();
     for (const c of [...initCookies.split("; "), ...loginPageCookies.split("; ")]) {
         const [key, value] = c.split("=");
@@ -151,28 +267,29 @@ async function fetchLoginPage() {
         .map(([k, v]) => `${k}=${v}`)
         .join("; ");
 
-    // 检查验证码
-    const captchaImg = doc.querySelector('img[src*="captcha"], img[src*="verify"], #captcha_img');
-    if (captchaImg) {
-        throw new Error("登录需要验证码，请手动登录后将 Cookie 填入 MANUAL_COOKIE");
-    }
-
-    return { csrfToken, initialCookies: allCookies };
+    return { formhash, initialCookies: allCookies };
 }
+
 /**
  * 执行登录 POST 请求，拦截重定向并提取新的 Cookie
  */
-async function doLogin(email, password, csrfToken, initialCookies) {
+async function doLogin(email, password, formhash, initialCookies, captchaValue) {
     const formData = new URLSearchParams();
-    formData.append("at", csrfToken);
+    formData.append("formhash", formhash);
+    formData.append("referer", "https://bgm.tv/");
+    formData.append("dreferer", "https://bgm.tv/");
     formData.append("email", email);
     formData.append("password", password);
-    formData.append("com", "account");
-    formData.append("t", "submitLogin");
-    formData.append("login", "登录");
+    // 不勾选“不保存我的登录状态”时，不传 cookietime 即可保持登录
+    // 如果希望强制不保存，可加上：formData.append("cookietime", "0");
+    formData.append("loginsubmit", "登录");
+
+    if (captchaValue) {
+        formData.append("captcha_challenge_field", captchaValue);
+    }
 
     const response = await requestUrl({
-        url: "https://bgm.tv/login",
+        url: "https://bgm.tv/FollowTheRabbit",  // 正确的提交地址
         method: "POST",
         headers: {
             ...COMMON_HEADERS,
@@ -182,24 +299,23 @@ async function doLogin(email, password, csrfToken, initialCookies) {
             "X-Requested-With": "XMLHttpRequest",
         },
         body: formData.toString(),
-        redirect: "manual", // 关键：手动处理重定向
+        redirect: "manual",
     });
 
     const setCookieHeaders = response.headers["set-cookie"] || [];
     const cookieArray = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
 
     if (cookieArray.length === 0) {
-        throw new Error("登录失败：未收到新的 Cookie，请检查账号密码是否正确");
+        console.error("登录响应状态:", response.status);
+        console.error("登录响应内容:", (response.text || "").substring(0, 2000));
+        throw new Error("登录失败：未收到新的 Cookie，请检查账号密码或验证码");
     }
 
-    // 合并所有 Cookie（去重）
     const cookieMap = new Map();
     const allCookies = [...initialCookies.split("; "), ...cookieArray.map(c => c.split(";")[0])];
     for (const c of allCookies) {
         const [key, value] = c.split("=");
-        if (key && value) {
-            cookieMap.set(key.trim(), value.trim());
-        }
+        if (key && value) cookieMap.set(key.trim(), value.trim());
     }
 
     const cookieString = Array.from(cookieMap.entries())
@@ -207,7 +323,8 @@ async function doLogin(email, password, csrfToken, initialCookies) {
         .join("; ");
 
     if (!cookieString.includes("chii_auth") && !cookieString.includes("chii_sid")) {
-        throw new Error("登录后未找到会话 Cookie，可能登录失败或需要验证码");
+        console.error("登录后 Cookie:", cookieString);
+        throw new Error("登录后未找到会话 Cookie，可能验证码错误或登录失败");
     }
 
     return cookieString;
@@ -224,7 +341,7 @@ async function getOrRefreshCookies() {
         return cookies;
     }
 
-    // 2. 如果手动配置了 MANUAL_COOKIE，优先使用它
+    // 2. 手动配置的 MANUAL_COOKIE
     if (MANUAL_COOKIE && MANUAL_COOKIE.trim() !== "") {
         if (await validateCookies(MANUAL_COOKIE)) {
             saveCookies(MANUAL_COOKIE);
@@ -235,21 +352,45 @@ async function getOrRefreshCookies() {
         }
     }
 
-    // 3. 已保存的 Cookie 无效，检查账号配置
+    // 3. 如果未配置账号密码，直接用写死的 USER_COOKIE
     if (!BANGUMI_EMAIL || !BANGUMI_PASSWORD) {
-        throw new Error(
-            "Cookie 已失效且未配置账号密码。\n" +
-            "请在脚本开头的配置区填写 BANGUMI_EMAIL 和 BANGUMI_PASSWORD，或填写 MANUAL_COOKIE。"
-        );
+        console.log("未配置账号密码，尝试使用默认 USER_COOKIE");
+        if (USER_COOKIE && USER_COOKIE.trim() !== "") {
+            if (await validateCookies(USER_COOKIE)) {
+                saveCookies(USER_COOKIE);
+                console.log("使用默认 USER_COOKIE 成功");
+                return USER_COOKIE;
+            } else {
+                throw new Error("未配置账号密码，且默认 USER_COOKIE 已失效。请在配置区填写 BANGUMI_EMAIL 和 BANGUMI_PASSWORD。");
+            }
+        } else {
+            throw new Error("未配置账号密码，且默认 USER_COOKIE 为空。请在配置区填写 BANGUMI_EMAIL 和 BANGUMI_PASSWORD。");
+        }
     }
 
-    // 4. 执行自动登录
+    // 4. 自动登录（含验证码交互）
     new Notice("正在登录 Bangumi...");
     try {
-        const { csrfToken, initialCookies } = await fetchLoginPage();
-        const newCookies = await doLogin(BANGUMI_EMAIL, BANGUMI_PASSWORD, csrfToken, initialCookies);
+        const { formhash, initialCookies } = await fetchLoginPage();
 
-        // 5. 验证新 Cookie 是否有效
+        // 主动请求验证码接口，如果能拿到图片就弹窗输入
+        let captchaValue = "";
+        const captchaBase64 = await fetchCaptchaBase64(initialCookies);
+        if (captchaBase64) {
+            new Notice("检测到验证码，请在弹出的窗口中输入");
+            captchaValue = await showCaptchaInput(captchaBase64);
+        } else {
+            console.log("未获取到验证码图片，按无需验证码继续");
+        }
+
+        const newCookies = await doLogin(
+            BANGUMI_EMAIL,
+            BANGUMI_PASSWORD,
+            formhash,
+            initialCookies,
+            captchaValue
+        );
+
         if (await validateCookies(newCookies)) {
             saveCookies(newCookies);
             new Notice("Bangumi 登录成功，Cookie 已保存");
@@ -258,7 +399,31 @@ async function getOrRefreshCookies() {
             throw new Error("登录后 Cookie 验证失败");
         }
     } catch (err) {
+        // 5. 自动登录失败，弹窗询问是否使用默认 USER_COOKIE
         new Notice(`Bangumi 自动登录失败: ${err.message}`, 6000);
+
+        if (USER_COOKIE && USER_COOKIE.trim() !== "") {
+            let useDefault = false;
+            try {
+                useDefault = await QuickAdd.quickAddApi.yesNoPrompt(
+                    "登录失败",
+                    `自动登录失败：${err.message}\n\n是否使用脚本内置的默认 Cookie？`
+                );
+            } catch (e) {
+                console.error("弹窗失败:", e);
+            }
+
+            if (useDefault) {
+                if (await validateCookies(USER_COOKIE)) {
+                    saveCookies(USER_COOKIE);
+                    new Notice("已切换到默认 Cookie");
+                    return USER_COOKIE;
+                } else {
+                    throw new Error("默认 USER_COOKIE 也已失效，请手动获取新 Cookie 填入 MANUAL_COOKIE。");
+                }
+            }
+        }
+
         throw err;
     }
 }
@@ -272,10 +437,9 @@ async function getOrRefreshCookies() {
  */
 async function requestGet(url, customHeaders = null) {
     try {
-        // 如果没有传入自定义请求头，则使用默认头并动态添加 Cookie
         const headers = customHeaders || {
             ...COMMON_HEADERS,
-            "Cookie": await getOrRefreshCookies(), // 动态获取 Cookie
+            "Cookie": await getOrRefreshCookies(),
         };
         const finalURL = new URL(url);
         const res = await request({
