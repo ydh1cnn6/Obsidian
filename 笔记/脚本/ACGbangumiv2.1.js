@@ -13,11 +13,9 @@ const USER_COOKIE = `chii_sec_id=OiNqAzd7lqHFA%2Fig3Iyk9N6i8RIhX5L2Pgk; chii_the
 const BANGUMI_EMAIL = "2834637197@qq.com";      // 你的 Bangumi 登录邮箱
 const BANGUMI_PASSWORD = "qwertasd123";   // 你的 Bangumi 登录密码
 
-// 如果自动登录失败（例如遇到无法处理的验证码），可以手动填入 Cookie 作为兜底。
+// 手动 Cookie：优先级最高。填写后直接用这个 Cookie，不再走自动登录。
+// 留空则会尝试用账号密码自动登录。
 const MANUAL_COOKIE = "";
-
-// Cookie 在 Obsidian 本地存储中的键名
-const COOKIE_STORAGE_KEY = "bangumi_auto_cookies";
 
 const notice = (msg) => new Notice(msg, 5000);
 const log = (msg) => console.log(msg);
@@ -43,40 +41,16 @@ module.exports = bangumi;
 let QuickAdd;
 let pageNum = 1;
 
-// ============================== 自动登录模块 ==============================
+// ============================== Cookie 管理（不持久化，每次运行独立） ==============================
+// 当前运行期间使用的 Cookie（内存中，脚本结束后丢弃）
+let CURRENT_COOKIE = null;
 
-function loadSavedCookies() {
-    try {
-        return localStorage.getItem(COOKIE_STORAGE_KEY) || null;
-    } catch (e) {
-        return null;
-    }
-}
-
-function saveCookies(cookieString) {
-    try {
-        localStorage.setItem(COOKIE_STORAGE_KEY, cookieString);
-    } catch (e) {
-        console.error("保存 Cookie 失败:", e);
-    }
-}
-
-async function validateCookies(cookieString) {
-    if (!cookieString) return false;
-    try {
-        const response = await requestUrl({
-            url: "https://bgm.tv/",
-            method: "GET",
-            headers: {
-                ...COMMON_HEADERS,
-                "Cookie": cookieString,
-            },
-        });
-        const html = response.text || "";
-        return html.includes("chii_auth") || html.includes("退出") || (html.includes("user/") && html.includes("nav"));
-    } catch (e) {
-        return false;
-    }
+/**
+ * 判断响应内容是否是登录页（用于检测 Cookie 失效）
+ */
+function isLoginPage(html) {
+    if (!html || typeof html !== "string") return false;
+    return html.includes('name="formhash"') && html.includes('登录至 Bangumi');
 }
 
 /**
@@ -101,10 +75,6 @@ async function imageToBase64(url, cookie) {
     return `data:image/png;base64,${btoa(binary)}`;
 }
 
-/**
- * 主动请求 Bangumi 的验证码图片接口，返回 base64 或 null
- * Bangumi 的验证码图片是页面加载后由 JS 动态请求的，静态 HTML 里拿不到
- */
 /**
  * 主动请求 Bangumi 的验证码图片接口，返回 base64 或 null
  * 真实接口：https://bgm.tv/signup/captcha?随机数
@@ -281,7 +251,6 @@ async function doLogin(email, password, formhash, initialCookies, captchaValue) 
     formData.append("email", email);
     formData.append("password", password);
     // 不勾选“不保存我的登录状态”时，不传 cookietime 即可保持登录
-    // 如果希望强制不保存，可加上：formData.append("cookietime", "0");
     formData.append("loginsubmit", "登录");
 
     if (captchaValue) {
@@ -302,13 +271,22 @@ async function doLogin(email, password, formhash, initialCookies, captchaValue) 
         redirect: "manual",
     });
 
+    // 检查登录响应里是否有错误提示
+    const responseText = response.text || "";
+    if (responseText.includes("验证码错误") 
+        || responseText.includes("验证码不正确")
+        || responseText.includes("密码错误")
+        || responseText.includes("邮箱或密码错误")) {
+        throw new Error("登录被拒绝：验证码或账号密码错误");
+    }
+
     const setCookieHeaders = response.headers["set-cookie"] || [];
     const cookieArray = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
 
     if (cookieArray.length === 0) {
         console.error("登录响应状态:", response.status);
-        console.error("登录响应内容:", (response.text || "").substring(0, 2000));
-        throw new Error("登录失败：未收到新的 Cookie，请检查账号密码或验证码");
+        console.error("登录响应内容:", responseText.substring(0, 2000));
+        throw new Error("登录失败：未收到新的 Cookie");
     }
 
     const cookieMap = new Map();
@@ -322,51 +300,82 @@ async function doLogin(email, password, formhash, initialCookies, captchaValue) 
         .map(([k, v]) => `${k}=${v}`)
         .join("; ");
 
-    if (!cookieString.includes("chii_auth") && !cookieString.includes("chii_sid")) {
-        console.error("登录后 Cookie:", cookieString);
-        throw new Error("登录后未找到会话 Cookie，可能验证码错误或登录失败");
-    }
-
+    // 不再检查 chii_auth 字符串（不可靠），由调用方通过 validateCookies 判断
     return cookieString;
 }
 
 /**
- * 获取有效的 Cookie：优先使用已保存的，失效则自动登录
+ * 验证 Cookie 是否有效（严格判断：检查页面导航栏）
+ */
+async function validateCookies(cookieString) {
+    if (!cookieString) return false;
+    try {
+        const response = await requestUrl({
+            url: "https://bgm.tv/",
+            method: "GET",
+            headers: {
+                ...COMMON_HEADERS,
+                "Cookie": cookieString,
+            },
+        });
+        const html = response.text || "";
+
+        // 方法一（最可靠）：检查 idBadgerNeue 导航栏
+        const badgerMatch = html.match(/<div class="idBadgerNeue">([\s\S]*?)<\/div>\s*<\/div>/);
+        if (badgerMatch) {
+            const badgeHtml = badgerMatch[1];
+            // 游客状态：导航栏里包含 /login 或 /signup 链接
+            if (badgeHtml.includes("/login") || badgeHtml.includes("/signup")) {
+                console.log("Cookie 验证：游客状态（导航栏有登录/注册链接）");
+                return false;
+            }
+            // 登录状态：导航栏里包含 /user/ 链接（用户个人主页）
+            if (badgeHtml.includes("/user/")) {
+                console.log("Cookie 验证：已登录（导航栏有用户链接）");
+                return true;
+            }
+        }
+
+        // 方法二（兜底）：检查页面标题或特定已登录元素
+        const isLoggedIn = html.includes('class="userName"') 
+            || html.includes('id="badgerNeue"')
+            || (html.includes("/user/") && html.includes("退出"));
+        console.log("Cookie 验证结果（兜底）:", isLoggedIn ? "已登录" : "未登录");
+        return isLoggedIn;
+    } catch (e) {
+        console.log("Cookie 验证请求失败:", e.message);
+        return false;
+    }
+}
+
+/**
+ * 获取有效的 Cookie：优先 MANUAL_COOKIE，否则自动登录（登录成功后不持久化）
  */
 async function getOrRefreshCookies() {
-    // 1. 先尝试已保存的 Cookie
-    let cookies = loadSavedCookies();
-    if (cookies && await validateCookies(cookies)) {
-        console.log("使用已保存的 Cookie:\n" + cookies);
-        return cookies;
+    // 1. 本次运行已经获取过 Cookie，直接复用
+    if (CURRENT_COOKIE && await validateCookies(CURRENT_COOKIE)) {
+        console.log("使用本次运行已获取的 Cookie:\n" + CURRENT_COOKIE);
+        return CURRENT_COOKIE;
     }
 
-    // 2. 手动配置的 MANUAL_COOKIE
+    // 2. 优先使用 MANUAL_COOKIE
     if (MANUAL_COOKIE && MANUAL_COOKIE.trim() !== "") {
         if (await validateCookies(MANUAL_COOKIE)) {
-            saveCookies(MANUAL_COOKIE);
-            console.log("使用手动配置的 MANUAL_COOKIE:\n" + MANUAL_COOKIE);
+            CURRENT_COOKIE = MANUAL_COOKIE;
+            console.log("使用 MANUAL_COOKIE:\n" + MANUAL_COOKIE);
             return MANUAL_COOKIE;
         } else {
-            console.warn("MANUAL_COOKIE 已失效:\n" + MANUAL_COOKIE);
+            console.warn("MANUAL_COOKIE 已失效");
+            throw new Error("MANUAL_COOKIE 已失效，请更新或清空后改用账号密码登录。");
         }
     }
 
-    // 3. 如果未配置账号密码，直接用写死的 USER_COOKIE
+    // 3. 未配置 MANUAL_COOKIE，检查账号密码
     if (!BANGUMI_EMAIL || !BANGUMI_PASSWORD) {
-        console.log("未配置账号密码，尝试使用默认 USER_COOKIE");
-        if (USER_COOKIE && USER_COOKIE.trim() !== "") {
-            if (await validateCookies(USER_COOKIE)) {
-                saveCookies(USER_COOKIE);
-                console.log("使用默认 USER_COOKIE 成功:\n" + USER_COOKIE);
-                return USER_COOKIE;
-            } else {
-                console.warn("默认 USER_COOKIE 已失效:\n" + USER_COOKIE);
-                throw new Error("未配置账号密码，且默认 USER_COOKIE 已失效。请在配置区填写 BANGUMI_EMAIL 和 BANGUMI_PASSWORD。");
-            }
-        } else {
-            throw new Error("未配置账号密码，且默认 USER_COOKIE 为空。请在配置区填写 BANGUMI_EMAIL 和 BANGUMI_PASSWORD。");
-        }
+        throw new Error(
+            "MANUAL_COOKIE 为空，且未配置账号密码。\n" +
+            "请在配置区填写 MANUAL_COOKIE，或填写 BANGUMI_EMAIL 和 BANGUMI_PASSWORD。"
+        );
     }
 
     // 4. 自动登录（含验证码交互）
@@ -374,7 +383,6 @@ async function getOrRefreshCookies() {
     try {
         const { formhash, initialCookies } = await fetchLoginPage();
 
-        // 主动请求验证码接口，如果能拿到图片就弹窗输入
         let captchaValue = "";
         const captchaBase64 = await fetchCaptchaBase64(initialCookies);
         if (captchaBase64) {
@@ -395,63 +403,57 @@ async function getOrRefreshCookies() {
         console.log("登录成功，新 Cookie:\n" + newCookies);
 
         if (await validateCookies(newCookies)) {
-            saveCookies(newCookies);
-            new Notice("Bangumi 登录成功，Cookie 已保存");
+            // 不再持久化，只保存在本次运行的内存中
+            CURRENT_COOKIE = newCookies;
+            new Notice("Bangumi 登录成功");
             return newCookies;
         } else {
             throw new Error("登录后 Cookie 验证失败");
         }
     } catch (err) {
-        // 5. 自动登录失败，弹窗询问是否使用默认 USER_COOKIE
         new Notice(`Bangumi 自动登录失败: ${err.message}`, 6000);
-
-        if (USER_COOKIE && USER_COOKIE.trim() !== "") {
-            let useDefault = false;
-            try {
-                useDefault = await QuickAdd.quickAddApi.yesNoPrompt(
-                    "登录失败",
-                    `自动登录失败：${err.message}\n\n是否使用脚本内置的默认 Cookie？`
-                );
-            } catch (e) {
-                console.error("弹窗失败:", e);
-            }
-
-            if (useDefault) {
-                if (await validateCookies(USER_COOKIE)) {
-                    saveCookies(USER_COOKIE);
-                    console.log("已切换到默认 Cookie:\n" + USER_COOKIE);
-                    new Notice("已切换到默认 Cookie");
-                    return USER_COOKIE;
-                } else {
-                    throw new Error("默认 USER_COOKIE 也已失效，请手动获取新 Cookie 填入 MANUAL_COOKIE。");
-                }
-            }
-        }
-
         throw err;
     }
 }
 
 // ============================== 通用工具函数封装 ==============================
 /**
- * 通用HTTP GET请求
+ * 通用HTTP GET请求（按需验证 Cookie：先用现有 Cookie 请求，失败再触发登录）
  * @param {string} url - 请求地址
- * @param {object} [customHeaders=null] - 自定义请求头（不传则自动添加 Cookie）
+ * @param {object} [customHeaders=null] - 自定义请求头
  * @returns {Promise<string|null>} 响应内容或null
  */
 async function requestGet(url, customHeaders = null) {
     try {
-        const headers = customHeaders || {
+        const finalURL = new URL(url);
+        let headers = customHeaders || {
             ...COMMON_HEADERS,
             "Cookie": await getOrRefreshCookies(),
         };
-        const finalURL = new URL(url);
-        const res = await request({
+
+        let res = await request({
             url: finalURL.href,
             method: "GET",
             cache: "no-cache",
             headers: headers,
         });
+
+        // 按需验证：如果响应里出现登录页特征，说明 Cookie 失效
+        if (res && isLoginPage(res)) {
+            console.log("检测到 Cookie 失效，重新登录中...");
+            CURRENT_COOKIE = null; // 清空内存中的 Cookie，强制走登录流程
+            headers = {
+                ...COMMON_HEADERS,
+                "Cookie": await getOrRefreshCookies(),
+            };
+            res = await request({
+                url: finalURL.href,
+                method: "GET",
+                cache: "no-cache",
+                headers: headers,
+            });
+        }
+
         return res || null;
     } catch (err) {
         log(`请求失败: ${err.message}`);
@@ -656,6 +658,7 @@ function extractInfoboxFields(doc, rules) {
 async function bangumi(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
     pageNum = 1;
+    CURRENT_COOKIE = null; // 每次运行重置
 
     // 输入作品名称
     const name = await QuickAdd.quickAddApi.inputPrompt("输入查询的作品名称");
@@ -975,7 +978,7 @@ async function getParagraph(detailUrl) {
     const detailDoc = parseHtmlToDom(detailPage);
     const $ = (s) => detailDoc.querySelector(s);
     const $$ = (s) => detailDoc.querySelectorAll(s);
-	const paragraphbox = $$(".prg_list li");
+	const paragraphbox = $$(".line_list li");
 	
 	let currentType = ""; // 当前章节类型（SP/OP/ED）
 	let TypeNum = 1; // 正篇章节计数
@@ -983,7 +986,6 @@ async function getParagraph(detailUrl) {
 	paragraphbox.forEach(li => {
 		// 识别章节类型标记（"SP"、"OP"、"ED"）
 		// 1. 判断 class 是否包含 'cat'
-		console.log("章节 HTML:", li.outerHTML);
 		const hasCatClass = li.classList.contains('cat');
 
 		// 2. 获取元素文本内容（去除前后空格，避免空格影响判断）
@@ -999,13 +1001,12 @@ async function getParagraph(detailUrl) {
 		if (!titleElem) return;
 		//console.log("h6:"+titleElem.textContent)
 		//标记是否看过
-		let alreadyView = false;		
-		const small = li.querySelector('small');
-		if(small){
-			//console.log("small:"+small.textContent)	//
-			if(small.textContent.trim() !== ''){
-				alreadyView = true;
-			}
+		// 新逻辑：已观看的章节会在 .listEpPrgManager 里有 <span class="statusWatched">看过</span>
+		// 未观看的章节则只有空的 <span class="status"></span>
+		let alreadyView = false;
+		const watchedSpan = li.querySelector('.listEpPrgManager span.statusWatched');
+		if (watchedSpan && watchedSpan.textContent.trim() === '看过') {
+			alreadyView = true;
 		}
 		
 		
