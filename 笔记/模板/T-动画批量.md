@@ -14,10 +14,6 @@ Bangumi评分: " {{VALUE:rating}}"
 集数: "{{VALUE:episode}}"
 具体类型: "{{VALUE:type}}"
 动画公司: "{{VALUE:AnimeMake}}"
-本地类型: <% mediaInfo %>
-字幕语言: <% subLanguage %>
-字幕组: "<% subGroup %>"
-改编类别: <% catego %>
 ---
 
 > [!bookinfo|noicon]+ **{{VALUE:CN}}** 
