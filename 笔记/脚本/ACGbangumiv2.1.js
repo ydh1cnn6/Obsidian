@@ -76,8 +76,9 @@ async function imageToBase64(url, cookie) {
 }
 
 /**
- * 主动请求 Bangumi 的验证码图片接口，返回 base64 或 null
+ * 主动请求 Bangumi 的验证码图片接口，返回 { base64, updatedCookies }
  * 真实接口：https://bgm.tv/signup/captcha?随机数
+ * 关键：捕获响应里的 set-cookie，合并到 cookie 中，供登录请求使用
  */
 async function fetchCaptchaBase64(initialCookies) {
     // 构造带随机数的 URL，避免浏览器缓存
@@ -94,10 +95,30 @@ async function fetchCaptchaBase64(initialCookies) {
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
             },
         });
+
+        // 合并验证码请求返回的 set-cookie
+        let updatedCookies = initialCookies;
+        const setCookieHeaders = response.headers["set-cookie"] || [];
+        const cookieArray = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
+        if (cookieArray.length > 0) {
+            const cookieMap = new Map();
+            for (const c of initialCookies.split("; ")) {
+                const [key, value] = c.split("=");
+                if (key && value) cookieMap.set(key.trim(), value.trim());
+            }
+            for (const c of cookieArray.map(c => c.split(";")[0])) {
+                const [key, value] = c.split("=");
+                if (key && value) cookieMap.set(key.trim(), value.trim());
+            }
+            updatedCookies = Array.from(cookieMap.entries())
+                .map(([k, v]) => `${k}=${v}`)
+                .join("; ");
+            console.log("验证码请求更新了 Cookie:\n" + updatedCookies);
+        }
+
         const buffer = response.arrayBuffer;
         if (buffer && buffer.byteLength > 100) {
             const bytes = new Uint8Array(buffer);
-            // 判断图片魔数：PNG / JPEG / GIF
             const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
             const isJpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
             const isGif = bytes[0] === 0x47 && bytes[1] === 0x49;
@@ -107,14 +128,17 @@ async function fetchCaptchaBase64(initialCookies) {
                 for (let i = 0; i < bytes.length; i++) {
                     binary += String.fromCharCode(bytes[i]);
                 }
-                return `data:image/png;base64,${btoa(binary)}`;
+                return {
+                    base64: `data:image/png;base64,${btoa(binary)}`,
+                    updatedCookies: updatedCookies,
+                };
             }
         }
         console.log("验证码接口返回的不是有效图片");
-        return null;
+        return { base64: null, updatedCookies: updatedCookies };
     } catch (e) {
         console.log("请求验证码接口失败:", e.message);
-        return null;
+        return { base64: null, updatedCookies: initialCookies };
     }
 }
 
@@ -135,6 +159,12 @@ function showCaptchaInput(imageBase64) {
         title.textContent = "请输入验证码";
         title.style.cssText = "margin:0 0 10px 0;";
         dialog.appendChild(title);
+
+        // 提示：不要打开浏览器查看，浏览器每次会生成新验证码
+        const hint = document.createElement("p");
+        hint.textContent = "直接输入下方图中的验证码即可，不要打开浏览器查看（浏览器每次打开会生成新验证码）";
+        hint.style.cssText = "font-size:12px;color:var(--text-muted);margin:0 0 10px 0;line-height:1.4;";
+        dialog.appendChild(hint);
 
         const img = document.createElement("img");
         img.src = imageBase64;
@@ -378,42 +408,60 @@ async function getOrRefreshCookies() {
         );
     }
 
-    // 4. 自动登录（含验证码交互）
+    // 4. 自动登录（含验证码交互，最多重试 3 次）
     new Notice("正在登录 Bangumi...");
-    try {
-        const { formhash, initialCookies } = await fetchLoginPage();
+    const MAX_RETRY = 3;
+    let lastError = null;
 
-        let captchaValue = "";
-        const captchaBase64 = await fetchCaptchaBase64(initialCookies);
-        if (captchaBase64) {
-            new Notice("检测到验证码，请在弹出的窗口中输入");
-            captchaValue = await showCaptchaInput(captchaBase64);
-        } else {
-            console.log("未获取到验证码图片，按无需验证码继续");
+    for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+        try {
+            const { formhash, initialCookies } = await fetchLoginPage();
+
+            // 请求验证码，拿到图片和更新后的 Cookie
+            const captchaResult = await fetchCaptchaBase64(initialCookies);
+            let captchaValue = "";
+            let loginCookies = captchaResult.updatedCookies;
+
+            if (captchaResult.base64) {
+                const tip = attempt === 1 ? "检测到验证码，请在弹出的窗口中输入" : `验证码错误，请重新输入（第 ${attempt}/${MAX_RETRY} 次）`;
+                new Notice(tip);
+                captchaValue = await showCaptchaInput(captchaResult.base64);
+            } else {
+                console.log("未获取到验证码图片，按无需验证码继续");
+            }
+
+            const newCookies = await doLogin(
+                BANGUMI_EMAIL,
+                BANGUMI_PASSWORD,
+                formhash,
+                loginCookies,  // 关键：用更新后的 Cookie 提交登录
+                captchaValue
+            );
+
+            console.log("登录成功，新 Cookie:\n" + newCookies);
+
+            if (await validateCookies(newCookies)) {
+                CURRENT_COOKIE = newCookies;
+                new Notice("Bangumi 登录成功");
+                return newCookies;
+            } else {
+                throw new Error("登录后 Cookie 验证失败");
+            }
+        } catch (err) {
+            lastError = err;
+            console.warn(`登录尝试 ${attempt} 失败: ${err.message}`);
+
+            if (err.message.includes("验证码") || err.message.includes("账号密码")) {
+                if (attempt < MAX_RETRY) {
+                    new Notice(`验证码或密码错误，请重试（${attempt}/${MAX_RETRY}）`, 3000);
+                    continue;
+                }
+            }
+            break;
         }
-
-        const newCookies = await doLogin(
-            BANGUMI_EMAIL,
-            BANGUMI_PASSWORD,
-            formhash,
-            initialCookies,
-            captchaValue
-        );
-
-        console.log("登录成功，新 Cookie:\n" + newCookies);
-
-        if (await validateCookies(newCookies)) {
-            // 不再持久化，只保存在本次运行的内存中
-            CURRENT_COOKIE = newCookies;
-            new Notice("Bangumi 登录成功");
-            return newCookies;
-        } else {
-            throw new Error("登录后 Cookie 验证失败");
-        }
-    } catch (err) {
-        new Notice(`Bangumi 自动登录失败: ${err.message}`, 6000);
-        throw err;
     }
+
+    throw new Error(`登录失败：${lastError ? lastError.message : "未知错误"}`);
 }
 
 // ============================== 通用工具函数封装 ==============================
@@ -659,6 +707,9 @@ async function bangumi(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
     pageNum = 1;
     CURRENT_COOKIE = null; // 每次运行重置
+
+    // 先主动获取一次 Cookie，如果登录失败直接报错，避免被后续的“找不到内容”掩盖
+    await getOrRefreshCookies();
 
     // 输入作品名称
     const name = await QuickAdd.quickAddApi.inputPrompt("输入查询的作品名称");
