@@ -5,6 +5,7 @@
 //特别鸣谢：@ 鬼头明里单推人 及热心观众
 // 感谢 @北漠海 的优化思路及部分代码~
 //modify: 莺空_栩白（解决章节目录部分展示不全问题【非登录状态：章节全量展示；登录状态：筛选已观看章节】、动画导演概率不展示）
+//modify: 增加 Node.js https 登录路径，绕过 CORS 并捕获 302 Set-Cookie
 const USER_COOKIE = `chii_sec_id=OiNqAzd7lqHFA%2Fig3Iyk9N6i8RIhX5L2Pgk; chii_theme=light; chii_cookietime=2592000; prg_display_mode=normal; chii_auth=dQRpmdawWIVmE6xbdzTrOC1dQidZnrir6Z%2BBOcjjiszaUjbY3IKgV5EAwFLBpbvM132oe1XYsaGAcdzBRAMihqXarji99MAoG7qPWg; chii_sid=PSRaW0`;
 //附加有效的参考样式：`chii_sec_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_theme=light; _tea_utm_cache_10000007=undefined; chii_cookietime=2592000; chii_auth=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_searchDateLine=0; chii_sid=xxxxxx`
 
@@ -270,68 +271,332 @@ async function fetchLoginPage() {
     return { formhash, initialCookies: allCookies };
 }
 
+// ============================== 登录辅助函数 ==============================
+/**
+ * 尝试获取 Node.js 的 https 模块（用于发送不受 CORS 限制、且可控制重定向的请求）
+ * @returns {object|null} https 模块或 null
+ */
+function getNodeHttps() {
+    try {
+        if (typeof require === "function") {
+            const https = require("https");
+            if (https && typeof https.request === "function") return https;
+        }
+    } catch (e) { /* ignore */ }
+    try {
+        if (typeof window !== "undefined" && typeof window.require === "function") {
+            const https = window.require("https");
+            if (https && typeof https.request === "function") return https;
+        }
+    } catch (e) { /* ignore */ }
+    return null;
+}
+
+/**
+ * 尝试获取 electron.net 模块（用于发送不受 CORS 限制、且可控制重定向的请求）
+ * @returns {object|null} electron.net 模块或 null
+ */
+function getElectronNet() {
+    try {
+        if (typeof require === "function") {
+            const electron = require("electron");
+            if (electron && electron.net) return electron.net;
+        }
+    } catch (e) { /* ignore */ }
+    try {
+        if (typeof window !== "undefined" && typeof window.require === "function") {
+            const electron = window.require("electron");
+            if (electron && electron.net) return electron.net;
+        }
+    } catch (e) { /* ignore */ }
+    return null;
+}
+
+/**
+ * 合并初始 Cookie 和 Set-Cookie 头，返回新的 Cookie 字符串
+ * @param {string} initialCookies - 初始 Cookie 字符串
+ * @param {string[]} setCookieHeaders - Set-Cookie 头数组（每个元素是一个 cookie 的完整头）
+ * @returns {string} 合并后的 Cookie 字符串
+ */
+function mergeCookies(initialCookies, setCookieHeaders) {
+    const cookieMap = new Map();
+    for (const c of initialCookies.split("; ")) {
+        const idx = c.indexOf("=");
+        if (idx > 0) {
+            const k = c.substring(0, idx).trim();
+            const v = c.substring(idx + 1).trim();
+            if (k) cookieMap.set(k, v);
+        }
+    }
+    for (const sc of setCookieHeaders) {
+        // 每个 Set-Cookie 头形如：name=value; Path=/; HttpOnly; ...
+        const cookiePart = sc.split(";")[0].trim();
+        const idx = cookiePart.indexOf("=");
+        if (idx > 0) {
+            const k = cookiePart.substring(0, idx).trim();
+            const v = cookiePart.substring(idx + 1).trim();
+            if (k) cookieMap.set(k, v);
+        }
+    }
+    return Array.from(cookieMap.entries())
+        .map(([k, v]) => `${k}=${v}`)
+        .join("; ");
+}
+
+/**
+ * 使用 Node.js 的 https 模块发送登录 POST（可控制不自动重定向，从而拿到 302 的 Set-Cookie）
+ * 这是首选方案：不受 CORS 限制，且 Node 环境通常可用。
+ * @returns {Promise<string>} 新的 Cookie 字符串
+ */
+function doLoginWithNodeHttps(https, body, initialCookies) {
+    return new Promise((resolve, reject) => {
+        const bodyBuffer = Buffer.from(body, "utf-8");
+        const options = {
+            hostname: "bgm.tv",
+            port: 443,
+            path: "/FollowTheRabbit",
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Cookie": initialCookies,
+                "Referer": "https://bgm.tv/login",
+                "Origin": "https://bgm.tv",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.100.4758.11 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Content-Length": bodyBuffer.length,
+            },
+        };
+
+        const req = https.request(options, (res) => {
+            console.log("Node https 登录响应状态:", res.statusCode);
+
+            // 收集 Set-Cookie
+            let setCookieHeaders = res.headers["set-cookie"] || [];
+            if (!Array.isArray(setCookieHeaders)) setCookieHeaders = [setCookieHeaders];
+
+            // 收集 body（用于错误判断）
+            let bodyText = "";
+            res.on("data", (chunk) => { bodyText += chunk.toString(); });
+            res.on("end", () => {
+                // 状态码 200：服务器返回登录页，说明登录失败
+                if (res.statusCode === 200) {
+                    if (bodyText.includes("验证码错误") || bodyText.includes("验证码不正确")) {
+                        reject(new Error("登录被拒绝：验证码错误"));
+                        return;
+                    }
+                    if (bodyText.includes("密码错误") || bodyText.includes("邮箱或密码错误")) {
+                        reject(new Error("登录被拒绝：账号密码错误"));
+                        return;
+                    }
+                    reject(new Error("登录失败：服务器返回 200，可能表单数据有误"));
+                    return;
+                }
+
+                // 状态码 302/303：登录成功，提取 Set-Cookie
+                if (res.statusCode === 302 || res.statusCode === 303) {
+                    if (setCookieHeaders.length === 0) {
+                        reject(new Error("登录失败：未收到新的 Cookie"));
+                        return;
+                    }
+                    const newCookies = mergeCookies(initialCookies, setCookieHeaders);
+                    console.log("登录成功，新 Cookie:\n" + newCookies);
+                    resolve(newCookies);
+                    return;
+                }
+
+                reject(new Error(`登录失败：意外的状态码 ${res.statusCode}`));
+            });
+        });
+
+        req.on("error", (err) => {
+            reject(new Error("Node https 请求失败：" + err.message));
+        });
+
+        req.write(bodyBuffer);
+        req.end();
+    });
+}
+
+/**
+ * 使用 electron.net 发送登录 POST（可控制 redirect: manual）
+ * @returns {Promise<string>} 新的 Cookie 字符串
+ */
+function doLoginWithNet(net, body, initialCookies) {
+    return new Promise((resolve, reject) => {
+        const request = net.request({
+            method: "POST",
+            url: "https://bgm.tv/FollowTheRabbit",
+            redirect: "manual", // 关键：禁止自动重定向，从而拿到 302 的 Set-Cookie
+        });
+        request.setHeader("Content-Type", "application/x-www-form-urlencoded");
+        request.setHeader("Cookie", initialCookies);
+        request.setHeader("Referer", "https://bgm.tv/login");
+        request.setHeader("Origin", "https://bgm.tv");
+        request.setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.100.4758.11 Safari/537.36");
+        request.setHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        request.setHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+
+        let setCookieHeaders = [];
+        request.on("response", (response) => {
+            console.log("net 登录响应状态:", response.statusCode);
+
+            // 收集 Set-Cookie（Electron 的 net 模块返回的 headers['set-cookie'] 可能是数组或字符串）
+            const rawCookies = response.headers["set-cookie"];
+            if (rawCookies) {
+                setCookieHeaders = Array.isArray(rawCookies) ? rawCookies : [rawCookies];
+            }
+
+            // 收集 body（用于错误判断）
+            let bodyText = "";
+            response.on("data", (chunk) => { bodyText += chunk.toString(); });
+            response.on("end", () => {
+                // 如果状态码是 200，说明没有重定向，登录失败（服务器返回登录页）
+                if (response.statusCode === 200) {
+                    if (bodyText.includes("验证码错误") || bodyText.includes("验证码不正确")) {
+                        reject(new Error("登录被拒绝：验证码错误"));
+                        return;
+                    }
+                    if (bodyText.includes("密码错误") || bodyText.includes("邮箱或密码错误")) {
+                        reject(new Error("登录被拒绝：账号密码错误"));
+                        return;
+                    }
+                    reject(new Error("登录失败：服务器返回 200，可能表单数据有误"));
+                    return;
+                }
+
+                // 如果状态码是 302/303，说明登录成功，提取 Set-Cookie
+                if (setCookieHeaders.length === 0) {
+                    reject(new Error("登录失败：未收到新的 Cookie"));
+                    return;
+                }
+
+                const newCookies = mergeCookies(initialCookies, setCookieHeaders);
+                console.log("登录成功，新 Cookie:\n" + newCookies);
+                resolve(newCookies);
+            });
+        });
+
+        request.on("error", (err) => {
+            reject(new Error("net 请求失败：" + err.message));
+        });
+
+        request.write(body);
+        request.end();
+    });
+}
+
+/**
+ * 使用 fetch 发送登录 POST（回退方案，设置 redirect: 'manual'）
+ * 注意：在浏览器/Electron 渲染进程中，跨域请求的 opaqueredirect 可能导致无法读取 Set-Cookie。
+ * @returns {Promise<string>} 新的 Cookie 字符串
+ */
+async function doLoginWithFetch(body, initialCookies) {
+    const response = await fetch("https://bgm.tv/FollowTheRabbit", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Cookie": initialCookies,
+            "Referer": "https://bgm.tv/login",
+            "Origin": "https://bgm.tv",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.100.4758.11 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        },
+        body: body,
+        redirect: "manual", // 关键：禁止自动重定向
+    });
+
+    console.log("fetch 登录响应状态:", response.status);
+    console.log("fetch 登录响应类型:", response.type);
+
+    // 如果是 opaqueredirect，说明跨域安全策略阻止了读取 headers，无法拿到 Set-Cookie
+    if (response.type === "opaqueredirect") {
+        throw new Error("登录请求返回 opaque redirect，无法读取 Set-Cookie。请改用 MANUAL_COOKIE 方式，或确认 Node https / electron.net 可用。");
+    }
+
+    // 收集 Set-Cookie
+    let setCookieHeaders = [];
+    if (typeof response.headers.getSetCookie === "function") {
+        setCookieHeaders = response.headers.getSetCookie();
+    } else {
+        const raw = response.headers.get("set-cookie");
+        if (raw) {
+            // 注意：多个 Set-Cookie 可能被合并成一个字符串，用逗号分隔。
+            // 但 cookie 值中的日期也含逗号，所以这里尽量按 ", " 分割，作为回退。
+            setCookieHeaders = raw.split(/,\s*(?=[^;]+=[^;]+)/);
+        }
+    }
+
+    // 如果状态码是 200，说明登录失败
+    if (response.status === 200) {
+        const text = await response.text();
+        if (text.includes("验证码错误") || text.includes("验证码不正确")) {
+            throw new Error("登录被拒绝：验证码错误");
+        }
+        if (text.includes("密码错误") || text.includes("邮箱或密码错误")) {
+            throw new Error("登录被拒绝：账号密码错误");
+        }
+        throw new Error("登录失败：服务器返回 200，可能表单数据有误");
+    }
+
+    if (setCookieHeaders.length === 0) {
+        throw new Error("登录失败：未收到新的 Cookie");
+    }
+
+    const newCookies = mergeCookies(initialCookies, setCookieHeaders);
+    console.log("登录成功，新 Cookie:\n" + newCookies);
+    return newCookies;
+}
+
 /**
  * 执行登录 POST 请求，拦截重定向并提取新的 Cookie
+ * 优先使用 Node.js https（不受 CORS 限制），其次 electron.net，最后回退 fetch。
  */
 async function doLogin(email, password, formhash, initialCookies, captchaValue) {
     const formData = new URLSearchParams();
     formData.append("formhash", formhash);
-    formData.append("referer", "https://bgm.tv/");
-    formData.append("dreferer", "https://bgm.tv/");
+    formData.append("referer", "/");
+    formData.append("dreferer", "/");
     formData.append("email", email);
     formData.append("password", password);
-    // 不勾选“不保存我的登录状态”时，不传 cookietime 即可保持登录
     formData.append("loginsubmit", "登录");
 
     if (captchaValue) {
         formData.append("captcha_challenge_field", captchaValue);
     }
 
-    const response = await requestUrl({
-        url: "https://bgm.tv/FollowTheRabbit",  // 正确的提交地址
-        method: "POST",
-        headers: {
-            ...COMMON_HEADERS,
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Cookie": initialCookies,
-            "Referer": "https://bgm.tv/login",
-            "X-Requested-With": "XMLHttpRequest",
-        },
-        body: formData.toString(),
-        redirect: "manual",
-    });
+    const body = formData.toString();
 
-    // 检查登录响应里是否有错误提示
-    const responseText = response.text || "";
-    if (responseText.includes("验证码错误") 
-        || responseText.includes("验证码不正确")
-        || responseText.includes("密码错误")
-        || responseText.includes("邮箱或密码错误")) {
-        throw new Error("登录被拒绝：验证码或账号密码错误");
+    // 首选：Node.js https（不受 CORS 限制，且可捕获 302 Set-Cookie）
+    const https = getNodeHttps();
+    if (https) {
+        try {
+            console.log("使用 Node.js https 模块发送登录请求");
+            return await doLoginWithNodeHttps(https, body, initialCookies);
+        } catch (e) {
+            console.warn("Node https 登录失败，尝试回退:", e.message);
+        }
+    } else {
+        console.log("未检测到 Node.js https 模块");
     }
 
-    const setCookieHeaders = response.headers["set-cookie"] || [];
-    const cookieArray = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
-
-    if (cookieArray.length === 0) {
-        console.error("登录响应状态:", response.status);
-        console.error("登录响应内容:", responseText.substring(0, 2000));
-        throw new Error("登录失败：未收到新的 Cookie");
+    // 次选：electron.net
+    const net = getElectronNet();
+    if (net) {
+        try {
+            console.log("使用 electron.net 发送登录请求");
+            return await doLoginWithNet(net, body, initialCookies);
+        } catch (e) {
+            console.warn("electron.net 登录失败，尝试回退到 fetch:", e.message);
+        }
+    } else {
+        console.log("未检测到 electron.net");
     }
 
-    const cookieMap = new Map();
-    const allCookies = [...initialCookies.split("; "), ...cookieArray.map(c => c.split(";")[0])];
-    for (const c of allCookies) {
-        const [key, value] = c.split("=");
-        if (key && value) cookieMap.set(key.trim(), value.trim());
-    }
-
-    const cookieString = Array.from(cookieMap.entries())
-        .map(([k, v]) => `${k}=${v}`)
-        .join("; ");
-
-    // 不再检查 chii_auth 字符串（不可靠），由调用方通过 validateCookies 判断
-    return cookieString;
+    // 最后：fetch（很可能因 CORS 失败）
+    console.log("使用 fetch 发送登录请求");
+    return await doLoginWithFetch(body, initialCookies);
 }
 
 /**
