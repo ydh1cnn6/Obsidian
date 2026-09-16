@@ -5,7 +5,26 @@
 //特别鸣谢：@ 鬼头明里单推人 及热心观众
 // 感谢 @北漠海 的优化思路及部分代码~
 //modify: 莺空_栩白（解决章节目录部分展示不全问题【非登录状态：章节全量展示；登录状态：筛选已观看章节】、动画导演概率不展示）
-const USER_COOKIE = `chii_sec_id=OiNqAzd7lqHFA%2Fig3Iyk9N6i8RIhX5L2Pgk; chii_theme=light; chii_cookietime=2592000; prg_display_mode=normal; chii_auth=dQRpmdawWIVmE6xbdzTrOC1dQidZnrir6Z%2BBOcjjiszaUjbY3IKgV5EAwFLBpbvM132oe1XYsaGAcdzBRAMihqXarji99MAoG7qPWg; chii_sid=PSRaW0`;
+//modify: 增加登录检测 + 浏览器跳转 + 粘贴 Cookie 自动提取拼接流程
+//modify: Cookie 持久化到 Obsidian 本地存储，重启后无需重新粘贴
+
+// 本地存储键名（存储清洗后的 Cookie）
+const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
+
+// 优先从 Obsidian 本地存储读取已保存的 Cookie；读不到时使用下方默认值。
+// 用户粘贴新 Cookie 成功后，promptAndUpdateCookie 会自动写回本地存储。
+let USER_COOKIE = (() => {
+    try {
+        const saved = app?.loadLocalStorage?.(COOKIE_STORAGE_KEY);
+        if (saved && typeof saved === "string" && saved.trim()) {
+            return saved.trim();
+        }
+    } catch (e) {
+        // 读取失败时静默回退到默认值
+    }
+    return `chii_sec_id=OiNqAzd7lqHFA%2Fig3Iyk9N6i8RIhX5L2Pgk; chii_theme=light; chii_cookietime=2592000; prg_display_mode=normal; chii_auth=dQRpmdawWIVmE6xbdzTrOC1dQidZnrir6Z%2BBOcjjiszaUjbY3IKgV5EAwFLBpbvM132oe1XYsaGAcdzBRAMihqXarji99MAoG7qPWg; chii_sid=PSRaW0`;
+})();
+
 //附加有效的参考样式：`chii_sec_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_theme=light; _tea_utm_cache_10000007=undefined; chii_cookietime=2592000; chii_auth=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_searchDateLine=0; chii_sid=xxxxxx`
 
 const notice = (msg) => new Notice(msg, 5000);
@@ -25,6 +44,7 @@ const COMMON_HEADERS = {
     'Sec-Fetch-Dest': 'script',
     'Referer': 'https://bgm.tv/',
     'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+	// 注意：Cookie 会在 requestGet 中动态注入 USER_COOKIE，这里只是占位
 	'Cookie': USER_COOKIE,
 };
 
@@ -39,18 +59,23 @@ let pageNum = 1;
 // ============================== 通用工具函数封装 ==============================
 /**
  * 通用HTTP GET请求
+ * 动态注入当前的 USER_COOKIE，保证运行时更新 Cookie 后立即生效
  * @param {string} url - 请求地址
- * @param {object} [customHeaders=COMMON_HEADERS] - 自定义请求头
+ * @param {object} [customHeaders=null] - 自定义请求头（可选，会与 Cookie 合并）
  * @returns {Promise<string|null>} 响应内容或null
  */
-async function requestGet(url, customHeaders = COMMON_HEADERS) {
+async function requestGet(url, customHeaders = null) {
     try {
         const finalURL = new URL(url);
+        // 每次请求都重新注入 USER_COOKIE，这样 Cookie 运行时更新后立即可用
+        const headers = customHeaders
+            ? { ...customHeaders, Cookie: USER_COOKIE }
+            : { ...COMMON_HEADERS, Cookie: USER_COOKIE };
         const res = await request({
             url: finalURL.href,
             method: "GET",
             cache: "no-cache",
-            headers: customHeaders,
+            headers: headers,
         });
         return res || null;
     } catch (err) {
@@ -72,6 +97,193 @@ function parseHtmlToDom(html) {
     }
     const p = new DOMParser();
     return p.parseFromString(html, "text/html");
+}
+
+/**
+ * 检测 Bangumi 登录状态
+ * 已登录：页面存在 #badgeUserPanel，且不存在未登录链接 a[href="/login"]
+ * 未登录/Cookie 失效：返回 false
+ * @returns {Promise<boolean>} 是否已登录
+ */
+async function checkBangumiLogin() {
+    const html = await requestGet("https://bgm.tv/");
+    if (!html) return false;
+
+    const doc = parseHtmlToDom(html);
+    // 已登录通常有用户面板；未登录会有 /login 链接
+    return !!doc.querySelector('#badgeUserPanel') && !doc.querySelector('a[href="/login"]');
+}
+
+/**
+ * 打开系统默认浏览器跳转到 Bangumi 登录页
+ * 优先使用 electron 的 shell.openExternal，兜底用 window.open
+ * @returns {Promise<void>}
+ */
+async function openBangumiLoginPage() {
+    const loginUrl = "https://bgm.tv/login";
+    try {
+        const { shell } = require('electron');
+        await shell.openExternal(loginUrl);
+    } catch (e) {
+        // 兜底：有些环境 require electron 不可用
+        window.open(loginUrl, '_blank');
+    }
+}
+
+/**
+ * 判断某个 cookie 名是否需要保留
+ * 参考有效样式：
+ *   chii_sec_id; chii_theme; _tea_utm_cache_10000007; chii_cookietime;
+ *   chii_auth; chii_searchDateLine; chii_sid
+ * 即：只保留 chii_* 与 _tea_*，其它（_ga / _ga_xxx / _fbp / _gid 等）全部丢弃。
+ * @param {string} name - cookie 名称
+ * @returns {boolean} 是否保留
+ */
+function isBangumiRelevantCookie(name) {
+    if (!name) return false;
+    return /^chii_/i.test(name) || /^_tea_/i.test(name);
+}
+
+/**
+ * 清洗用户粘贴的 Cookie 输入
+ * 不依赖换行 / 制表符，直接从整段文本里用正则抽取 chii_* 与 _tea_* 的 name 与 value。
+ * 兼容以下格式：
+ *  1) DevTools「Application → Cookies」表格（name 与 value 之间是制表符）
+ *  2) DevTools 表格被压成一整行、列间只剩空格的情况
+ *  3) 直接复制的 Cookie 字符串 "k1=v1; k2=v2"
+ *  4) Request Headers 里的 "Cookie: k1=v1; k2=v2"
+ * 关键点：name 与 value 之间的分隔符允许是 `=`、制表符、空格或换行；
+ *        value 终止于空白字符或分号。
+ * 其它 cookie（_ga / _ga_xxx / prg_* 等）自动丢弃；同名去重。
+ * @param {string} raw - 用户粘贴的原始文本
+ * @returns {string} 清洗后可直接使用的 Cookie 字符串
+ */
+function sanitizeCookieInput(raw) {
+    if (!raw) return "";
+    let s = String(raw);
+
+    // 去掉首尾空白、外层引号 / 反引号
+    s = s.replace(/^[\s"'`]+|[\s"'`]+$/g, "");
+    // 去掉 "Cookie:" / "Cookie：" 前缀
+    s = s.replace(/^cookie\s*[:：]\s*/i, "");
+
+    // 同时兼容：
+    //   a) 字符串格式  chii_auth=xxxx
+    //   b) DevTools 表格  chii_auth<TAB>xxxx（粘贴时 tab 也可能被压成空格）
+    // name 与 value 之间的分隔符：=、制表符、空格、换行，都可以。
+    // value 终止于：空白字符 或 分号。
+    const re = /(chii_[A-Za-z0-9_]+|_tea_[A-Za-z0-9_]+)[=\s\u00a0]+([^\s\u00a0;]+)/g;
+
+    const pairs = [];
+    const seen = new Set();
+    let m;
+    while ((m = re.exec(s)) !== null) {
+        const name = m[1];
+        const value = m[2];
+        if (!isBangumiRelevantCookie(name)) continue; // 二次保险
+        if (seen.has(name)) continue;                 // 同名去重（保留首次出现）
+        seen.add(name);
+        pairs.push(`${name}=${value}`);
+    }
+
+    return pairs.join("; ");
+}
+
+/**
+ * 校验 Cookie 是否含有必要字段
+ * 至少要包含 chii_auth（其他字段缺失不阻塞，但通常也建议一并带上）
+ * @param {string} cookieStr - 清洗后的 Cookie 字符串
+ * @returns {boolean} 是否通过校验
+ */
+function isValidBangumiCookie(cookieStr) {
+    if (!cookieStr) return false;
+    // 至少要有 chii_auth；如果你希望更严格，可把下面数组改成 ['chii_sec_id', 'chii_auth', 'chii_sid']
+    const requiredKeys = ["chii_auth"];
+    return requiredKeys.every(k => cookieStr.includes(k + "="));
+}
+
+/**
+ * 把清洗后的 Cookie 持久化到 Obsidian 本地存储
+ * 失败时只记录日志，不影响主流程
+ * @param {string} cookieStr - 清洗后的 Cookie 字符串
+ */
+function persistCookie(cookieStr) {
+    try {
+        if (app?.saveLocalStorage) {
+            app.saveLocalStorage(COOKIE_STORAGE_KEY, cookieStr);
+        }
+    } catch (e) {
+        log(`保存 Cookie 到本地存储失败：${e.message}`);
+    }
+}
+
+/**
+ * 清除本地存储中的 Cookie（用于 Cookie 失效后强制重新登录）
+ */
+function clearPersistedCookie() {
+    try {
+        if (app?.saveLocalStorage) {
+            app.saveLocalStorage(COOKIE_STORAGE_KEY, "");
+        }
+    } catch (e) {
+        log(`清除本地存储 Cookie 失败：${e.message}`);
+    }
+}
+
+/**
+ * 弹出输入框让用户粘贴新的 Bangumi Cookie，并更新全局 USER_COOKIE
+ * 支持从剪贴板自动预填（如果浏览器/环境允许）；成功后写入本地存储
+ * @returns {Promise<boolean>} 是否成功更新
+ */
+async function promptAndUpdateCookie() {
+    // 尝试读取剪贴板作为默认值（读取失败不影响流程）
+    let clipboardText = "";
+    try {
+        if (navigator?.clipboard?.readText) {
+            const t = await navigator.clipboard.readText();
+            if (t && t.trim()) clipboardText = t.trim();
+        }
+    } catch (e) {
+        // 无剪贴板权限或被拒绝，忽略
+    }
+
+    const message = "Bangumi Cookie（支持 DevTools 表格整段粘贴）";
+    const placeholder = "chii_sec_id=...; chii_theme=light; _tea_utm_cache_10000007=undefined; chii_cookietime=2592000; chii_auth=...; chii_searchDateLine=0; chii_sid=...";
+    while (true) {
+        // 若剪贴板有内容则作为默认值，用户回车即可使用
+        const defaultValue = clipboardText || placeholder;
+        let input = await QuickAdd.quickAddApi.inputPrompt(message, defaultValue);
+
+        // 用户取消
+        if (input === null) {
+            const retry = await QuickAdd.quickAddApi.yesNoPrompt("已取消", "未输入 Cookie，是否重新输入？");
+            if (!retry) return false;
+            continue;
+        }
+
+        // 空输入
+        if (!input || input.trim() === "") {
+            const retry = await QuickAdd.quickAddApi.yesNoPrompt("输入为空", "未输入 Cookie，是否重新输入？");
+            if (!retry) return false;
+            continue;
+        }
+
+        const cleaned = sanitizeCookieInput(input);
+        if (!isValidBangumiCookie(cleaned)) {
+            new Notice("Cookie 缺少必要字段（至少包含 chii_auth=...），请重新复制粘贴。", 5000);
+            // 保留上次输入作为默认值，方便修正
+            clipboardText = cleaned || input;
+            continue;
+        }
+
+        // 更新全局 Cookie
+        USER_COOKIE = cleaned;
+        COMMON_HEADERS.Cookie = cleaned; // 与 COMMON_HEADERS 保持一致（虽然 requestGet 会动态注入，同步一下更直观）
+        // 持久化到本地存储，下次启动无需重新粘贴
+        persistCookie(cleaned);
+        new Notice("已更新 Cookie 并保存，正在校验登录状态…", 3000);
+        return true;
+    }
 }
 
 /**
@@ -256,6 +468,41 @@ function extractInfoboxFields(doc, rules) {
 async function bangumi(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
     pageNum = 1;
+
+    // ===== 登录检测 & 自动跳转浏览器 & 粘贴 Cookie 更新 =====
+    // 逻辑：检测未登录 → 询问是否打开浏览器 → 打开登录页 → 弹输入框让用户粘贴新 Cookie
+    //      → 用新 Cookie 再次校验 → 通过则继续，不通过则循环
+    let logged = await checkBangumiLogin();
+    while (!logged) {
+        // 本地存储里的 Cookie 已失效，先清掉，避免下次又拿旧值
+        clearPersistedCookie();
+
+        const goLogin = await QuickAdd.quickAddApi.yesNoPrompt(
+            "Bangumi 未登录",
+            "检测到未登录或 Cookie 已失效。\n是否打开浏览器登录页面？\n（登录后请复制新 Cookie，脚本会弹出输入框让你粘贴，粘贴成功后会保存到本地，下次无需重复粘贴）"
+        );
+
+        if (!goLogin) {
+            throw new Error("Bangumi 未登录，已中止");
+        }
+
+        // 打开系统默认浏览器到 Bangumi 登录页
+        await openBangumiLoginPage();
+        new Notice("已打开 Bangumi 登录页。登录完成后，请复制浏览器中的 Cookie（DevTools → Application → Cookies → https://bgm.tv，可直接整段复制，脚本会自动筛选 chii_* 与 _tea_*），随后回到 Obsidian。", 8000);
+
+        // 弹出输入框让用户粘贴 Cookie，并自动更新全局 USER_COOKIE + 写入本地存储
+        const updated = await promptAndUpdateCookie();
+        if (!updated) {
+            throw new Error("未更新 Cookie，已中止");
+        }
+
+        // 用新 Cookie 重新校验
+        logged = await checkBangumiLogin();
+        if (!logged) {
+            new Notice("Cookie 校验失败或仍为未登录状态，请检查是否复制完整。", 5000);
+        }
+    }
+    // ===== 登录检测结束 =====
 
     // 输入作品名称
     const name = await QuickAdd.quickAddApi.inputPrompt("输入查询的作品名称");
@@ -836,3 +1083,16 @@ async function getGameByurl(url) {
 
     return finalInfo;
 }
+
+
+/**
+ * 清除已保存的 Bangumi Cookie（供 QuickAdd 手动调用）
+ * 用法：在 QuickAdd 里新建一个 Macro / Template，执行 module.exports 时调用 resetBangumiCookie
+ */
+async function resetBangumiCookie() {
+    clearPersistedCookie();
+    new Notice("已清除保存的 Bangumi Cookie，下次运行会要求重新登录。", 5000);
+}
+
+// 让 QuickAdd 可以单独调用它
+module.exports.resetBangumiCookie = resetBangumiCookie;
