@@ -8,12 +8,41 @@
 //modify: 增加登录检测 + 浏览器跳转 + 粘贴 Cookie 自动提取拼接流程
 //modify: Cookie 持久化到 Obsidian 本地存储，重启后无需重新粘贴
 //modify: 优先使用 Bangumi 个人访问令牌（Access Token）认证，令牌无效/未配置时回退 Cookie 流程
+//modify: 新增批量模式（bangumiBatch）——按收藏状态一次性拉取动画并批量生成笔记
+//modify: 批量模式支持中断按钮；批量模式不再弹 score 输入框，改用 Bangumi 已有评分或默认值
 
 // ========== 存储键名 ==========
 // 本地存储键名（存储清洗后的 Cookie）
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
 // 本地存储键名（存储个人访问令牌）
 const TOKEN_STORAGE_KEY = "bangumi_to_obsidian_access_token";
+
+// ========== 模板名常量 ==========
+// 批量模式下使用的 QuickAdd 模板名（需与你 QuickAdd 里配置的动画模板名一致）
+const TEMPLATE_NAME_ANIME = "Bangumi动画-批量";
+
+// ========== 默认值常量 ==========
+// 用户在 Bangumi 未评分时的默认分（可改成你想要的默认值，比如 "0" 或 ""）
+// 注意：模板里必须用 {{score}} 而不是 {{VALUE:score}}，否则仍会弹窗
+const DEFAULT_SCORE_IF_EMPTY = "";
+
+// ========== 收藏状态映射 ==========
+// Bangumi 收藏类型：1=想看, 2=在看, 3=看过, 4=搁置, 5=抛弃
+const COLLECTION_TYPE_MAP = {
+    1: "想看",
+    2: "在看",
+    3: "看过",
+    4: "搁置",
+    5: "抛弃",
+};
+// 反向映射：中文名 → 数字
+const COLLECTION_LABEL_TO_TYPE = {
+    "想看": 1,
+    "在看": 2,
+    "看过": 3,
+    "搁置": 4,
+    "抛弃": 5,
+};
 
 // ========== 认证凭据初始化 ==========
 // 优先从 Obsidian 本地存储读取已保存的 Cookie；读不到时使用下方默认值。
@@ -44,6 +73,16 @@ let USER_TOKEN = (() => {
     return "";
 })();
 
+// 当前登录用户名（批量拉取收藏时需要），由 validateAccessToken 自动填充
+let USER_NAME = "";
+
+// 批量导入的中断标志：点击「中断导入」按钮后置为 true
+// 每次循环迭代都会检查，为 true 则跳出循环输出汇总
+let BATCH_ABORT = false;
+
+// 中断按钮的 DOM id（避免和页面其他元素冲突）
+const ABORT_BTN_ID = "bangumi-batch-abort-btn";
+
 //附加有效的参考样式：`chii_sec_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_theme=light; _tea_utm_cache_10000007=undefined; chii_cookietime=2592000; chii_auth=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_searchDateLine=0; chii_sid=xxxxxx`
 
 const notice = (msg) => new Notice(msg, 5000);
@@ -70,7 +109,14 @@ const COMMON_HEADERS = {
 
 
 
+// 主入口：普通单作品模式
 module.exports = bangumi;
+
+// 辅助入口：批量拉取收藏模式（需要在 QuickAdd 里另建一个命令指向这个函数）
+module.exports.bangumiBatch = bangumiBatch;
+// 兼容旧调用名：清除凭据
+module.exports.resetBangumiAuth = resetBangumiAuth;
+module.exports.resetBangumiCookie = resetBangumiAuth;
 
 let QuickAdd;
 let pageNum = 1;
@@ -119,6 +165,26 @@ async function requestGet(url, customHeaders = null) {
 }
 
 /**
+ * 通用HTTP GET请求（返回 JSON 对象）
+ * 认证逻辑与 requestGet 相同，但会解析 JSON
+ * @param {string} url - 请求地址
+ * @returns {Promise<object|null>} 解析后的 JSON 对象，失败返回 null
+ */
+async function requestGetJson(url) {
+    const raw = await requestGet(url, {
+        "Accept": "application/json",
+        // 让 requestGet 里逻辑判断照旧走 Token / Cookie
+    });
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch (e) {
+        log(`JSON 解析失败: ${e.message}`);
+        return null;
+    }
+}
+
+/**
  * 解析HTML字符串为DOM对象
  * @param {string} html - HTML字符串
  * @returns {Document} DOM文档对象
@@ -158,6 +224,8 @@ async function validateAccessToken(token) {
         try {
             const data = JSON.parse(res);
             if (data && data.username) {
+                // 顺便缓存用户名，批量模式要用
+                USER_NAME = data.username;
                 return data.username;
             }
         } catch (e) {
@@ -188,6 +256,7 @@ async function checkBangumiLogin() {
         new Notice("Access Token 已失效，将回退到 Cookie 登录流程。", 4000);
         clearPersistedToken();
         USER_TOKEN = "";
+        USER_NAME = "";
     }
 
     // 2. 回退到 Cookie 登录检测
@@ -520,6 +589,339 @@ async function promptAndUpdateCookie() {
     }
 }
 
+/**
+ * 交互式认证流程（普通模式 / 批量模式共用）
+ * 未登录 → 清旧凭据 → 询问认证方式 → 打开浏览器 → 让用户粘贴 → 校验 → 循环直到成功或取消
+ * @returns {Promise<void>}
+ */
+async function ensureAuthenticated() {
+    let logged = await checkBangumiLogin();
+    while (!logged) {
+        // 本地存储里的凭据已失效，先清掉，避免下次又拿旧值
+        clearPersistedCookie();
+        clearPersistedToken();
+        USER_COOKIE = "";
+        USER_TOKEN = "";
+        USER_NAME = "";
+
+        // 询问用户选择认证方式
+        const useToken = await QuickAdd.quickAddApi.yesNoPrompt(
+            "Bangumi 未登录",
+            "检测到未登录或凭据已失效。\n\n" +
+            "推荐使用「个人访问令牌（Access Token）」——一次配置，约 1 年有效，无需频繁获取 Cookie。\n\n" +
+            "选择「是」：打开浏览器生成 Access Token（推荐）\n" +
+            "选择「否」：打开浏览器登录后复制 Cookie"
+        );
+
+        if (useToken) {
+            // ---- 路线 A：使用 Access Token ----
+            await openBangumiTokenPage();
+            new Notice("已打开 Bangumi Token 生成页。请在浏览器中登录并生成个人令牌，然后复制令牌回到 Obsidian。", 8000);
+
+            const tokenUpdated = await promptAndUpdateToken();
+            if (!tokenUpdated) {
+                throw new Error("未更新 Token，已中止");
+            }
+        } else {
+            // ---- 路线 B：使用 Cookie ----
+            await openBangumiLoginPage();
+            new Notice("已打开 Bangumi 登录页。登录完成后，请复制浏览器中的 Cookie（DevTools → Application → Cookies → https://bgm.tv，可直接整段复制），随后回到 Obsidian。", 8000);
+
+            const cookieUpdated = await promptAndUpdateCookie();
+            if (!cookieUpdated) {
+                throw new Error("未更新 Cookie，已中止");
+            }
+        }
+
+        // 用新凭据重新校验
+        logged = await checkBangumiLogin();
+        if (!logged) {
+            new Notice("凭据校验失败，请检查是否复制完整或令牌是否有效。", 5000);
+        }
+    }
+}
+
+// ============================== 收藏批量拉取 ==============================
+
+/**
+ * 获取当前登录用户的用户名（批量模式需要）
+ * 优先使用已缓存的 USER_NAME；未缓存时通过 /v0/me 拉取
+ * @returns {Promise<string>} 用户名，失败返回空串
+ */
+async function getCurrentUsername() {
+    if (USER_NAME) return USER_NAME;
+    if (!USER_TOKEN || !USER_TOKEN.trim()) return "";
+    const name = await validateAccessToken(USER_TOKEN);
+    return name || "";
+}
+
+/**
+ * 拉取指定收藏类型的所有条目（自动分页）
+ * @param {number} subjectType - 作品类型：1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元
+ * @param {number} collectionType - 收藏类型：1=想看, 2=在看, 3=看过, 4=搁置, 5=抛弃
+ * @returns {Promise<Array>} 条目数组（原始 API 数据）
+ */
+async function fetchAllCollections(subjectType, collectionType) {
+    const username = await getCurrentUsername();
+    if (!username) {
+        throw new Error("无法获取用户名（批量模式需要有效的 Access Token）");
+    }
+
+    const allItems = [];
+    const limit = 50;
+    let offset = 0;
+    let total = Infinity;
+    const maxPages = 200; // 保险上限：最多 10000 条
+
+    for (let page = 0; page < maxPages; page++) {
+        // 中断拉取
+        if (BATCH_ABORT) break;
+
+        const url = `https://api.bgm.tv/v0/users/${encodeURIComponent(username)}/collections` +
+            `?subject_type=${subjectType}&type=${collectionType}&limit=${limit}&offset=${offset}`;
+        const data = await requestGetJson(url);
+        if (!data) break;
+
+        const items = Array.isArray(data.data) ? data.data : [];
+        total = typeof data.total === "number" ? data.total : items.length;
+
+        if (items.length === 0) break;
+        allItems.push(...items);
+        offset += limit;
+
+        // 已拉完（本页不满 limit 或累计数已到 total）
+        if (items.length < limit || allItems.length >= total) break;
+    }
+
+    return allItems;
+}
+
+// ============================== 批量中断按钮 ==============================
+
+/**
+ * 显示「中断导入」悬浮按钮
+ * 点击后设置 BATCH_ABORT = true，循环会在当前作品处理完后停止
+ * 多次调用只会创建一个按钮
+ */
+function showAbortButton() {
+    // 已存在则先移除，避免重复
+    const old = document.getElementById(ABORT_BTN_ID);
+    if (old) old.remove();
+
+    const btn = document.createElement('button');
+    btn.id = ABORT_BTN_ID;
+    btn.textContent = '⏹ 中断导入';
+    btn.style.cssText = [
+        'position: fixed',
+        'right: 24px',
+        'bottom: 24px',
+        'z-index: 999999',
+        'padding: 12px 18px',
+        'background: #c62828',
+        'color: #fff',
+        'border: none',
+        'border-radius: 8px',
+        'font-size: 15px',
+        'font-weight: 600',
+        'cursor: pointer',
+        'box-shadow: 0 4px 14px rgba(0,0,0,.35)',
+        'font-family: system-ui, -apple-system, "Segoe UI", sans-serif',
+    ].join(';');
+    btn.onmouseenter = () => (btn.style.background = '#b71c1c');
+    btn.onmouseleave = () => (btn.style.background = '#c62828');
+    btn.addEventListener('click', () => {
+        BATCH_ABORT = true;
+        btn.disabled = true;
+        btn.textContent = '⏳ 正在中断…';
+        btn.style.background = '#616161';
+        btn.style.cursor = 'not-allowed';
+        new Notice("已请求中断，将在当前作品处理完后停止。", 4000);
+    });
+    document.body.appendChild(btn);
+}
+
+/**
+ * 移除「中断导入」悬浮按钮
+ */
+function hideAbortButton() {
+    const btn = document.getElementById(ABORT_BTN_ID);
+    if (btn) btn.remove();
+}
+
+// ============================== 批量生成主流程 ==============================
+/**
+ * 批量模式：一次拉取指定收藏状态的动画，逐个生成笔记（跳过所有交互）
+ * - 认证成功后弹出多选框选择要拉取的状态
+ * - 对每个收藏项走 getAnimeByurl 解析
+ * - 直接调用 QuickAdd 模板生成，跳过标签选择、评分等交互
+ * - 批量过程中显示「中断导入」按钮，可随时中止
+ * - 已存在的文件是否覆盖，取决于 QuickAdd 模板设置（"Overwrite existing file"）
+ * @param {object} QuickAddInstance - QuickAdd 实例
+ */
+async function bangumiBatch(QuickAddInstance) {
+    QuickAdd = QuickAddInstance;
+    pageNum = 1;
+    BATCH_ABORT = false; // 每次进入批量模式都重置中断标志
+
+    // ===== 认证 =====
+    await ensureAuthenticated();
+
+    // 批量模式必须使用 Token 才能读取用户收藏
+    if (!USER_TOKEN || !USER_TOKEN.trim()) {
+        const ok = await QuickAdd.quickAddApi.yesNoPrompt(
+            "需要 Access Token",
+            "批量拉取收藏需要 Access Token。\n是否现在打开 Token 生成页？\n（生成后粘贴到 Obsidian，即可使用批量模式）"
+        );
+        if (!ok) return;
+
+        await openBangumiTokenPage();
+        new Notice("已打开 Token 生成页。生成后请复制令牌回到 Obsidian。", 8000);
+
+        const tokenUpdated = await promptAndUpdateToken();
+        if (!tokenUpdated) return;
+    }
+
+    // 拉一次用户名，确保 USER_NAME 已缓存
+    const username = await getCurrentUsername();
+    if (!username) {
+        new Notice("无法获取用户名，批量模式已中止。", 5000);
+        return;
+    }
+
+    // ===== 让用户勾选要拉取的收藏状态 =====
+    const allLabels = ["想看", "在看", "看过", "搁置", "抛弃"];
+    const defaultChecked = ["想看", "在看", "看过"];
+    const selectedLabels = await QuickAdd.quickAddApi.checkboxPrompt(allLabels, defaultChecked);
+    if (!selectedLabels || selectedLabels.length === 0) {
+        new Notice("未选择任何收藏类型，已中止。", 4000);
+        return;
+    }
+    const typesToFetch = selectedLabels.map(l => COLLECTION_LABEL_TO_TYPE[l]).filter(Boolean);
+
+    new Notice(`正在拉取收藏（${selectedLabels.join("、")}）…`, 4000);
+
+    // ===== 拉取全部收藏 =====
+    const subjectMap = new Map(); // subject_id -> { subject_id, subject, collectionType, tags, rate }
+    for (const t of typesToFetch) {
+        // 中断拉取
+        if (BATCH_ABORT) break;
+
+        try {
+            const items = await fetchAllCollections(2, t); // subject_type=2 表示动画
+            for (const item of items) {
+                // 同一作品通常只在一个状态里；若重复，以先遇到的为准
+                if (!subjectMap.has(item.subject_id)) {
+                    subjectMap.set(item.subject_id, {
+                        subject_id: item.subject_id,
+                        subject: item.subject || {},
+                        collectionType: t,
+                        userTags: Array.isArray(item.tags) ? item.tags : [],
+                        // API 里 rate 是用户对该作品的评分（0 表示未评分）
+                        rate: item.rate || 0,
+                    });
+                }
+            }
+        } catch (e) {
+            new Notice(`拉取「${COLLECTION_TYPE_MAP[t]}」失败：${e.message}`, 6000);
+            log(`拉取失败: ${e.message}`);
+        }
+    }
+
+    // 中断检查
+    if (BATCH_ABORT) {
+        new Notice("已在拉取阶段中断，未生成任何笔记。", 5000);
+        return;
+    }
+
+    const subjects = Array.from(subjectMap.values());
+    if (subjects.length === 0) {
+        new Notice("没有拉取到任何动画收藏，已中止。", 5000);
+        return;
+    }
+
+    // ===== 二次确认 =====
+    const proceed = await QuickAdd.quickAddApi.yesNoPrompt(
+        "准备批量生成笔记",
+        `共拉取到 ${subjects.length} 部动画。\n` +
+        `即将逐个生成笔记（是否覆盖已存在的文件，取决于 QuickAdd 模板设置）。\n\n` +
+        `过程中右下角会出现「中断导入」按钮，可随时中止。\n\n` +
+        `是否开始？`
+    );
+    if (!proceed) return;
+
+    // ===== 显示中断按钮 =====
+    showAbortButton();
+
+    // ===== 逐个生成 =====
+    let success = 0;
+    let failed = 0;
+    let aborted = false;
+    const failedList = [];
+
+    try {
+        for (let i = 0; i < subjects.length; i++) {
+            // 每轮循环检查中断标志
+            if (BATCH_ABORT) {
+                aborted = true;
+                break;
+            }
+
+            const item = subjects[i];
+            const subjectUrl = `https://bgm.tv/subject/${item.subject_id}`;
+            const displayName = item.subject?.name_cn || item.subject?.name || String(item.subject_id);
+
+            new Notice(`[${i + 1}/${subjects.length}] 正在处理：${displayName}`, 3000);
+
+            try {
+                const Info = await getAnimeByurl(subjectUrl);
+
+                // 批量模式跳过标签勾选：
+                // 优先用用户自己在 Bangumi 上打的标签；没有则回退到推荐的标签
+                if (Array.isArray(item.userTags) && item.userTags.length > 0) {
+                    Info.tags = item.userTags;
+                } else {
+                    Info.tags = Info.tagsRecommendArray || [];
+                }
+                Info.url = subjectUrl;
+
+                // 评分处理：优先用用户在 Bangumi 上的评分（API 返回的 rate，0 表示未评分）
+                // 没有评分就用默认值，绝不弹窗让用户输入
+                if (item.rate && Number(item.rate) > 0) {
+                    Info.score = String(item.rate);
+                } else {
+                    Info.score = DEFAULT_SCORE_IF_EMPTY;
+                }
+
+                // 附带收藏状态，供模板中使用
+                Info.collectionType = item.collectionType;
+                Info.collectionTypeName = COLLECTION_TYPE_MAP[item.collectionType];
+
+                // 直接调用模板生成笔记，跳过所有交互
+                await QuickAdd.quickAddApi.executeChoice(TEMPLATE_NAME_ANIME, Info);
+
+                success++;
+            } catch (e) {
+                failed++;
+                failedList.push(`${item.subject_id} ${displayName}：${e.message}`);
+                console.error(`[批量] 处理失败`, item.subject_id, e);
+            }
+        }
+    } finally {
+        // 无论成功、失败还是异常，都要移除中断按钮
+        hideAbortButton();
+    }
+
+    // ===== 输出统计 =====
+    const summary =
+        (aborted ? `已中断（用户主动停止）\n\n` : `批量生成完成\n`) +
+        `成功：${success}\n` +
+        `失败：${failed}` +
+        (aborted ? `\n未处理：${subjects.length - success - failed}` : "") +
+        (failedList.length > 0 ? `\n\n失败列表：\n${failedList.join("\n")}` : "");
+    new Notice(summary, 10000);
+    log(summary);
+}
+
 // ============================== 作品信息解析 ==============================
 
 /**
@@ -700,60 +1102,13 @@ function extractInfoboxFields(doc, rules) {
     return result;
 }
 
-// ============================== 业务逻辑函数 ==============================
+// ============================== 业务逻辑函数（普通模式） ==============================
 async function bangumi(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
     pageNum = 1;
 
-    // ===== 认证流程 =====
-    // 优先级：Access Token > Cookie 登录
-    // 1. 先尝试 Token 认证（若已配置且有效）
-    // 2. Token 无效/未配置 → 检查 Cookie 登录态
-    // 3. 都无效 → 询问是否打开浏览器获取 Token 或登录复制 Cookie
-    let logged = await checkBangumiLogin();
-    while (!logged) {
-        // 本地存储里的凭据已失效，先清掉，避免下次又拿旧值
-        clearPersistedCookie();
-        clearPersistedToken();
-        USER_COOKIE = "";
-        USER_TOKEN = "";
-
-        // 询问用户选择认证方式
-        const useToken = await QuickAdd.quickAddApi.yesNoPrompt(
-            "Bangumi 未登录",
-            "检测到未登录或凭据已失效。\n\n" +
-            "推荐使用「个人访问令牌（Access Token）」——一次配置，约 1 年有效，无需频繁获取 Cookie。\n\n" +
-            "选择「是」：打开浏览器生成 Access Token（推荐）\n" +
-            "选择「否」：打开浏览器登录后复制 Cookie"
-        );
-
-        if (useToken) {
-            // ---- 路线 A：使用 Access Token ----
-            await openBangumiTokenPage();
-            new Notice("已打开 Bangumi Token 生成页。请在浏览器中登录并生成个人令牌，然后复制令牌回到 Obsidian。", 8000);
-
-            const tokenUpdated = await promptAndUpdateToken();
-            if (!tokenUpdated) {
-                throw new Error("未更新 Token，已中止");
-            }
-        } else {
-            // ---- 路线 B：使用 Cookie ----
-            await openBangumiLoginPage();
-            new Notice("已打开 Bangumi 登录页。登录完成后，请复制浏览器中的 Cookie（DevTools → Application → Cookies → https://bgm.tv，可直接整段复制），随后回到 Obsidian。", 8000);
-
-            const cookieUpdated = await promptAndUpdateCookie();
-            if (!cookieUpdated) {
-                throw new Error("未更新 Cookie，已中止");
-            }
-        }
-
-        // 用新凭据重新校验
-        logged = await checkBangumiLogin();
-        if (!logged) {
-            new Notice("凭据校验失败，请检查是否复制完整或令牌是否有效。", 5000);
-        }
-    }
-    // ===== 认证结束 =====
+    // ===== 认证流程（普通模式 / 批量模式共用） =====
+    await ensureAuthenticated();
 
     // 输入作品名称
     const name = await QuickAdd.quickAddApi.inputPrompt("输入查询的作品名称");
@@ -819,7 +1174,8 @@ async function bangumi(QuickAddInstance) {
 
     // 标签选择与评分输入
     Info.tags = await QuickAdd.quickAddApi.checkboxPrompt(Info.tagsArray, Info.tagsRecommendArray) || [];
-    //Info.score = await getValidScoreInput();
+    // 不弹评分输入框：直接给默认值（如需手动输入，把这行改成 await getValidScoreInput()）
+    Info.score = DEFAULT_SCORE_IF_EMPTY;
     Info.url = choice.link || " ";
 
     // 生成笔记
@@ -1345,6 +1701,7 @@ async function resetBangumiAuth() {
     clearPersistedToken();
     USER_COOKIE = "";
     USER_TOKEN = "";
+    USER_NAME = "";
     new Notice("已清除保存的 Bangumi Cookie 和 Access Token，下次运行会要求重新认证。", 5000);
 }
 
@@ -1352,7 +1709,3 @@ async function resetBangumiAuth() {
 async function resetBangumiCookie() {
     return resetBangumiAuth();
 }
-
-// 让 QuickAdd 可以单独调用它
-module.exports.resetBangumiAuth = resetBangumiAuth;
-module.exports.resetBangumiCookie = resetBangumiCookie;
