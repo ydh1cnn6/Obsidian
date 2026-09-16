@@ -7,10 +7,15 @@
 //modify: 莺空_栩白（解决章节目录部分展示不全问题【非登录状态：章节全量展示；登录状态：勾选已观看章节】、动画导演概率不展示问题）
 //modify: 增加登录检测 + 浏览器跳转 + 粘贴 Cookie 自动提取拼接流程
 //modify: Cookie 持久化到 Obsidian 本地存储，重启后无需重新粘贴
+//modify: 优先使用 Bangumi 个人访问令牌（Access Token）认证，令牌无效/未配置时回退 Cookie 流程
 
+// ========== 存储键名 ==========
 // 本地存储键名（存储清洗后的 Cookie）
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
+// 本地存储键名（存储个人访问令牌）
+const TOKEN_STORAGE_KEY = "bangumi_to_obsidian_access_token";
 
+// ========== 认证凭据初始化 ==========
 // 优先从 Obsidian 本地存储读取已保存的 Cookie；读不到时使用下方默认值。
 // 用户粘贴新 Cookie 成功后，promptAndUpdateCookie 会自动写回本地存储。
 let USER_COOKIE = (() => {
@@ -23,6 +28,20 @@ let USER_COOKIE = (() => {
         // 读取失败时静默回退到默认值
     }
     return `chii_sec_id=OiNqAzd7lqHFA%2Fig3Iyk9N6i8RIhX5L2Pgk; chii_theme=light; chii_cookietime=2592000; prg_display_mode=normal; chii_auth=dQRpmdawWIVmE6xbdzTrOC1dQidZnrir6Z%2BBOcjjiszaUjbY3IKgV5EAwFLBpbvM132oe1XYsaGAcdzBRAMihqXarji99MAoG7qPWg; chii_sid=PSRaW0`;
+})();
+
+// 优先从 Obsidian 本地存储读取已保存的 Access Token；读不到时为空串（表示未配置令牌）。
+// 用户粘贴新令牌成功后，promptAndUpdateToken 会自动写回本地存储。
+let USER_TOKEN = (() => {
+    try {
+        const saved = app?.loadLocalStorage?.(TOKEN_STORAGE_KEY);
+        if (saved && typeof saved === "string" && saved.trim()) {
+            return saved.trim();
+        }
+    } catch (e) {
+        // 读取失败时静默回退到空串
+    }
+    return "";
 })();
 
 //附加有效的参考样式：`chii_sec_id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_theme=light; _tea_utm_cache_10000007=undefined; chii_cookietime=2592000; chii_auth=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; chii_searchDateLine=0; chii_sid=xxxxxx`
@@ -44,7 +63,7 @@ const COMMON_HEADERS = {
     'Sec-Fetch-Dest': 'script',
     'Referer': 'https://bgm.tv/',
     'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-	// 注意：Cookie 会在 requestGet 中动态注入 USER_COOKIE，这里只是占位
+	// 注意：Cookie 与 Authorization 会在 requestGet 中动态注入，这里只是占位
 	'Cookie': USER_COOKIE,
 };
 
@@ -59,18 +78,32 @@ let pageNum = 1;
 // ============================== 通用工具函数封装 ==============================
 /**
  * 通用HTTP GET请求
- * 动态注入当前的 USER_COOKIE，保证运行时更新 Cookie 后立即生效
+ * 动态注入当前的认证凭据：
+ *  - 若配置了 Access Token，优先使用 Authorization: Bearer 头
+ *  - 否则使用 Cookie 请求头
+ * 保证运行时更新凭据后立即生效
  * @param {string} url - 请求地址
- * @param {object} [customHeaders=null] - 自定义请求头（可选，会与 Cookie 合并）
+ * @param {object} [customHeaders=null] - 自定义请求头（可选，会与认证信息合并）
  * @returns {Promise<string|null>} 响应内容或null
  */
 async function requestGet(url, customHeaders = null) {
     try {
         const finalURL = new URL(url);
-        // 每次请求都重新注入 USER_COOKIE，这样 Cookie 运行时更新后立即可用
+        // 构建基础请求头
         const headers = customHeaders
-            ? { ...customHeaders, Cookie: USER_COOKIE }
-            : { ...COMMON_HEADERS, Cookie: USER_COOKIE };
+            ? { ...customHeaders }
+            : { ...COMMON_HEADERS };
+
+        // 优先使用 Access Token 认证
+        if (USER_TOKEN && USER_TOKEN.trim()) {
+            headers['Authorization'] = `Bearer ${USER_TOKEN.trim()}`;
+            // 使用 Token 时不再发送 Cookie，避免冲突
+            delete headers['Cookie'];
+        } else {
+            // 回退到 Cookie 认证
+            headers['Cookie'] = USER_COOKIE;
+        }
+
         const res = await request({
             url: finalURL.href,
             method: "GET",
@@ -99,13 +132,65 @@ function parseHtmlToDom(html) {
     return p.parseFromString(html, "text/html");
 }
 
+// ============================== 认证相关函数 ==============================
+
+/**
+ * 校验 Access Token 是否有效
+ * 通过 Bangumi API 的 GET /v0/me 端点验证令牌
+ * 成功返回用户名，失败返回空串
+ * @param {string} token - 待校验的 Access Token
+ * @returns {Promise<string>} 用户名，失败返回空串
+ */
+async function validateAccessToken(token) {
+    if (!token || !token.trim()) return "";
+    try {
+        const res = await request({
+            url: "https://api.bgm.tv/v0/me",
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${token.trim()}`,
+                "User-Agent": COMMON_HEADERS["User-Agent"],
+                "Accept": "application/json",
+            },
+        });
+        if (!res) return "";
+        // 尝试解析 JSON，获取用户名
+        try {
+            const data = JSON.parse(res);
+            if (data && data.username) {
+                return data.username;
+            }
+        } catch (e) {
+            // 解析失败，认为令牌无效
+        }
+        return "";
+    } catch (err) {
+        log(`Token 校验失败: ${err.message}`);
+        return "";
+    }
+}
+
 /**
  * 检测 Bangumi 登录状态
- * 已登录：页面存在 #badgeUserPanel，且不存在未登录链接 a[href="/login"]
- * 未登录/Cookie 失效：返回 false
+ * 优先尝试 Access Token，其次检查 Cookie 登录态
  * @returns {Promise<boolean>} 是否已登录
  */
 async function checkBangumiLogin() {
+    // 1. 优先尝试 Access Token
+    if (USER_TOKEN && USER_TOKEN.trim()) {
+        const username = await validateAccessToken(USER_TOKEN);
+        if (username) {
+            log(`Token 认证成功，用户: ${username}`);
+            return true;
+        }
+        // Token 无效，清除已保存的 Token 并回退到 Cookie 流程
+        log("Token 已失效，将回退到 Cookie 登录流程");
+        new Notice("Access Token 已失效，将回退到 Cookie 登录流程。", 4000);
+        clearPersistedToken();
+        USER_TOKEN = "";
+    }
+
+    // 2. 回退到 Cookie 登录检测
     const html = await requestGet("https://bgm.tv/");
     if (!html) return false;
 
@@ -127,6 +212,20 @@ async function openBangumiLoginPage() {
     } catch (e) {
         // 兜底：有些环境 require electron 不可用
         window.open(loginUrl, '_blank');
+    }
+}
+
+/**
+ * 打开系统默认浏览器跳转到 Bangumi Access Token 生成页
+ * @returns {Promise<void>}
+ */
+async function openBangumiTokenPage() {
+    const tokenUrl = "https://next.bgm.tv/demo/access-token";
+    try {
+        const { shell } = require('electron');
+        await shell.openExternal(tokenUrl);
+    } catch (e) {
+        window.open(tokenUrl, '_blank');
     }
 }
 
@@ -202,6 +301,8 @@ function isValidBangumiCookie(cookieStr) {
     return requiredKeys.every(k => cookieStr.includes(k + "="));
 }
 
+// ============================== 凭据持久化 ==============================
+
 /**
  * 把清洗后的 Cookie 持久化到 Obsidian 本地存储
  * 失败时只记录日志，不影响主流程
@@ -231,26 +332,157 @@ function clearPersistedCookie() {
 }
 
 /**
- * 弹出输入框让用户粘贴新的 Bangumi Cookie，并更新全局 USER_COOKIE
- * 支持从剪贴板自动预填（如果浏览器/环境允许）；成功后写入本地存储
- * @returns {Promise<boolean>} 是否成功更新
+ * 把 Access Token 持久化到 Obsidian 本地存储
+ * @param {string} token - 清洗后的 Access Token
  */
-async function promptAndUpdateCookie() {
-    // 尝试读取剪贴板作为默认值（读取失败不影响流程）
-    let clipboardText = "";
+function persistToken(token) {
+    try {
+        if (app?.saveLocalStorage) {
+            app.saveLocalStorage(TOKEN_STORAGE_KEY, token);
+        }
+    } catch (e) {
+        log(`保存 Token 到本地存储失败：${e.message}`);
+    }
+}
+
+/**
+ * 清除本地存储中的 Access Token
+ */
+function clearPersistedToken() {
+    try {
+        if (app?.saveLocalStorage) {
+            app.saveLocalStorage(TOKEN_STORAGE_KEY, "");
+        }
+    } catch (e) {
+        log(`清除本地存储 Token 失败：${e.message}`);
+    }
+}
+
+// ============================== 剪贴板读取 ==============================
+
+/**
+ * 同步读取剪贴板（优先 Electron clipboard，Obsidian 里最稳）
+ * @returns {string} 剪贴板文本（去空白），读不到返回 ""
+ */
+function readClipboardTextSync() {
+    try {
+        const { clipboard } = require('electron');
+        if (clipboard && typeof clipboard.readText === 'function') {
+            const t = clipboard.readText();
+            if (t && t.trim()) return t.trim();
+        }
+    } catch (e) {
+        // require electron 失败 → 静默忽略
+    }
+    return "";
+}
+
+/**
+ * 异步读取剪贴板（Electron 同步读失败时，退回 navigator.clipboard）
+ * @returns {Promise<string>} 剪贴板文本，读不到返回 ""
+ */
+async function readClipboardTextAsync() {
+    // 1) Electron clipboard（同步，几乎总能成功）
+    const syncText = readClipboardTextSync();
+    if (syncText) return syncText;
+
+    // 2) navigator.clipboard（需要权限 / 用户手势，不一定成功）
     try {
         if (navigator?.clipboard?.readText) {
             const t = await navigator.clipboard.readText();
-            if (t && t.trim()) clipboardText = t.trim();
+            if (t && t.trim()) return t.trim();
         }
     } catch (e) {
-        // 无剪贴板权限或被拒绝，忽略
+        // 权限被拒 / 无用户手势，忽略
+    }
+    return "";
+}
+
+// ============================== 凭据输入流程 ==============================
+
+/**
+ * 让用户输入 Access Token 并校验，成功后更新全局 USER_TOKEN + 写入本地存储
+ * 支持从剪贴板自动预填
+ * @returns {Promise<boolean>} 是否成功更新
+ */
+async function promptAndUpdateToken() {
+    // 先从剪贴板读取，若已是有效 Token 格式，直接使用
+    const fromClipboard = await readClipboardTextAsync();
+
+    const message = "Bangumi 个人访问令牌（Access Token）\n在 https://next.bgm.tv/demo/access-token 生成，约 1 年有效。\n优先使用令牌认证，可省去频繁获取 Cookie。";
+    const placeholder = "在此粘贴你的 Access Token";
+
+    // 若剪贴板内容看起来像 Token（无空格、长度 > 20），作为默认值
+    const clipboardIsToken = fromClipboard && fromClipboard.length > 20 && !fromClipboard.includes(' ') && !fromClipboard.includes('=') && !fromClipboard.includes(';');
+
+    while (true) {
+        const defaultValue = (clipboardIsToken ? fromClipboard : "") || placeholder;
+        let input = await QuickAdd.quickAddApi.inputPrompt(message, defaultValue);
+
+        // 用户取消
+        if (input === null) return false;
+
+        // 空输入
+        if (!input || input.trim() === "") {
+            const retry = await QuickAdd.quickAddApi.yesNoPrompt("输入为空", "未输入 Token，是否重新输入？");
+            if (!retry) return false;
+            continue;
+        }
+
+        const token = input.trim();
+        new Notice("正在校验 Token…", 3000);
+        const username = await validateAccessToken(token);
+        if (!username) {
+            const retry = await QuickAdd.quickAddApi.yesNoPrompt(
+                "Token 无效",
+                "该 Token 校验失败（可能已过期或复制不完整）。\n是否重新输入？"
+            );
+            if (!retry) return false;
+            continue;
+        }
+
+        // 校验通过
+        USER_TOKEN = token;
+        persistToken(token);
+        // Token 认证成功时清空 Cookie，避免冲突
+        USER_COOKIE = "";
+        persistCookie("");
+        new Notice(`Token 校验成功 ✅ 用户: ${username}\n已保存，下次运行无需重新输入。`, 5000);
+        return true;
+    }
+}
+
+/**
+ * 弹出输入框让用户粘贴新的 Bangumi Cookie，并更新全局 USER_COOKIE
+ * 改进点：
+ *  - 先从剪贴板读取，若已是有效 Cookie，直接使用，不弹输入框
+ *  - 只有剪贴板无效时，才弹输入框让用户手动粘贴
+ *  - 成功后写入本地存储，下次启动无需重新粘贴
+ * @returns {Promise<boolean>} 是否成功更新
+ */
+async function promptAndUpdateCookie() {
+    // ---- 第一步：先尝试从剪贴板直接取 ----
+    const fromClipboard = await readClipboardTextAsync();
+    if (fromClipboard) {
+        const cleanedFromClipboard = sanitizeCookieInput(fromClipboard);
+        if (isValidBangumiCookie(cleanedFromClipboard)) {
+            USER_COOKIE = cleanedFromClipboard;
+            COMMON_HEADERS.Cookie = cleanedFromClipboard;
+            persistCookie(cleanedFromClipboard);
+            new Notice("已从剪贴板读取并保存 Cookie，正在校验登录状态…", 3000);
+            return true;
+        }
     }
 
-    const message = "Bangumi Cookie（支持 DevTools 表格整段粘贴）";
+    // ---- 第二步：剪贴板无效 / 为空 → 弹输入框让用户手动粘贴 ----
+    let clipboardText = fromClipboard || "";
+    const message = fromClipboard
+        ? "剪贴板内容未识别到 chii_auth，请手动粘贴完整 Cookie（支持 DevTools 表格整段粘贴）"
+        : "未从剪贴板读到 Cookie，请手动粘贴（支持 DevTools 表格整段粘贴）";
     const placeholder = "chii_sec_id=...; chii_theme=light; _tea_utm_cache_10000007=undefined; chii_cookietime=2592000; chii_auth=...; chii_searchDateLine=0; chii_sid=...";
+
     while (true) {
-        // 若剪贴板有内容则作为默认值，用户回车即可使用
+        // 注意：inputPrompt 第二个参数是 placeholder（灰色提示），不是默认值
         const defaultValue = clipboardText || placeholder;
         let input = await QuickAdd.quickAddApi.inputPrompt(message, defaultValue);
 
@@ -261,9 +493,12 @@ async function promptAndUpdateCookie() {
             continue;
         }
 
-        // 空输入
+        // 空输入（用户没敲任何内容，直接点确认）
         if (!input || input.trim() === "") {
-            const retry = await QuickAdd.quickAddApi.yesNoPrompt("输入为空", "未输入 Cookie，是否重新输入？");
+            const retry = await QuickAdd.quickAddApi.yesNoPrompt(
+                "输入为空",
+                "输入框里那串 chii_sec_id=... 是占位提示，不是已填好的内容。\n请手动粘贴 Cookie 后再点确认。是否重新输入？"
+            );
             if (!retry) return false;
             continue;
         }
@@ -271,20 +506,21 @@ async function promptAndUpdateCookie() {
         const cleaned = sanitizeCookieInput(input);
         if (!isValidBangumiCookie(cleaned)) {
             new Notice("Cookie 缺少必要字段（至少包含 chii_auth=...），请重新复制粘贴。", 5000);
-            // 保留上次输入作为默认值，方便修正
+            // 保留上次输入作为参考，方便修正
             clipboardText = cleaned || input;
             continue;
         }
 
         // 更新全局 Cookie
         USER_COOKIE = cleaned;
-        COMMON_HEADERS.Cookie = cleaned; // 与 COMMON_HEADERS 保持一致（虽然 requestGet 会动态注入，同步一下更直观）
-        // 持久化到本地存储，下次启动无需重新粘贴
+        COMMON_HEADERS.Cookie = cleaned;
         persistCookie(cleaned);
         new Notice("已更新 Cookie 并保存，正在校验登录状态…", 3000);
         return true;
     }
 }
+
+// ============================== 作品信息解析 ==============================
 
 /**
  * 提取作品基础信息
@@ -469,40 +705,55 @@ async function bangumi(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
     pageNum = 1;
 
-    // ===== 登录检测 & 自动跳转浏览器 & 粘贴 Cookie 更新 =====
-    // 逻辑：检测未登录 → 询问是否打开浏览器 → 打开登录页 → 弹输入框让用户粘贴新 Cookie
-    //      → 用新 Cookie 再次校验 → 通过则继续，不通过则循环
+    // ===== 认证流程 =====
+    // 优先级：Access Token > Cookie 登录
+    // 1. 先尝试 Token 认证（若已配置且有效）
+    // 2. Token 无效/未配置 → 检查 Cookie 登录态
+    // 3. 都无效 → 询问是否打开浏览器获取 Token 或登录复制 Cookie
     let logged = await checkBangumiLogin();
     while (!logged) {
-        // 本地存储里的 Cookie 已失效，先清掉，避免下次又拿旧值
+        // 本地存储里的凭据已失效，先清掉，避免下次又拿旧值
         clearPersistedCookie();
+        clearPersistedToken();
+        USER_COOKIE = "";
+        USER_TOKEN = "";
 
-        const goLogin = await QuickAdd.quickAddApi.yesNoPrompt(
+        // 询问用户选择认证方式
+        const useToken = await QuickAdd.quickAddApi.yesNoPrompt(
             "Bangumi 未登录",
-            "检测到未登录或 Cookie 已失效。\n是否打开浏览器登录页面？\n（登录后请复制新 Cookie，脚本会弹出输入框让你粘贴，粘贴成功后会保存到本地，下次无需重复粘贴）"
+            "检测到未登录或凭据已失效。\n\n" +
+            "推荐使用「个人访问令牌（Access Token）」——一次配置，约 1 年有效，无需频繁获取 Cookie。\n\n" +
+            "选择「是」：打开浏览器生成 Access Token（推荐）\n" +
+            "选择「否」：打开浏览器登录后复制 Cookie"
         );
 
-        if (!goLogin) {
-            throw new Error("Bangumi 未登录，已中止");
+        if (useToken) {
+            // ---- 路线 A：使用 Access Token ----
+            await openBangumiTokenPage();
+            new Notice("已打开 Bangumi Token 生成页。请在浏览器中登录并生成个人令牌，然后复制令牌回到 Obsidian。", 8000);
+
+            const tokenUpdated = await promptAndUpdateToken();
+            if (!tokenUpdated) {
+                throw new Error("未更新 Token，已中止");
+            }
+        } else {
+            // ---- 路线 B：使用 Cookie ----
+            await openBangumiLoginPage();
+            new Notice("已打开 Bangumi 登录页。登录完成后，请复制浏览器中的 Cookie（DevTools → Application → Cookies → https://bgm.tv，可直接整段复制），随后回到 Obsidian。", 8000);
+
+            const cookieUpdated = await promptAndUpdateCookie();
+            if (!cookieUpdated) {
+                throw new Error("未更新 Cookie，已中止");
+            }
         }
 
-        // 打开系统默认浏览器到 Bangumi 登录页
-        await openBangumiLoginPage();
-        new Notice("已打开 Bangumi 登录页。登录完成后，请复制浏览器中的 Cookie（DevTools → Application → Cookies → https://bgm.tv，可直接整段复制，脚本会自动筛选 chii_* 与 _tea_*），随后回到 Obsidian。", 8000);
-
-        // 弹出输入框让用户粘贴 Cookie，并自动更新全局 USER_COOKIE + 写入本地存储
-        const updated = await promptAndUpdateCookie();
-        if (!updated) {
-            throw new Error("未更新 Cookie，已中止");
-        }
-
-        // 用新 Cookie 重新校验
+        // 用新凭据重新校验
         logged = await checkBangumiLogin();
         if (!logged) {
-            new Notice("Cookie 校验失败或仍为未登录状态，请检查是否复制完整。", 5000);
+            new Notice("凭据校验失败，请检查是否复制完整或令牌是否有效。", 5000);
         }
     }
-    // ===== 登录检测结束 =====
+    // ===== 认证结束 =====
 
     // 输入作品名称
     const name = await QuickAdd.quickAddApi.inputPrompt("输入查询的作品名称");
@@ -1086,13 +1337,22 @@ async function getGameByurl(url) {
 
 
 /**
- * 清除已保存的 Bangumi Cookie（供 QuickAdd 手动调用）
- * 用法：在 QuickAdd 里新建一个 Macro / Template，执行 module.exports 时调用 resetBangumiCookie
+ * 清除已保存的 Bangumi Cookie 和 Access Token（供 QuickAdd 手动调用）
+ * 用法：在 QuickAdd 里新建一个 Macro / Template，执行 module.exports 时调用 resetBangumiAuth
  */
-async function resetBangumiCookie() {
+async function resetBangumiAuth() {
     clearPersistedCookie();
-    new Notice("已清除保存的 Bangumi Cookie，下次运行会要求重新登录。", 5000);
+    clearPersistedToken();
+    USER_COOKIE = "";
+    USER_TOKEN = "";
+    new Notice("已清除保存的 Bangumi Cookie 和 Access Token，下次运行会要求重新认证。", 5000);
+}
+
+// 兼容旧调用名
+async function resetBangumiCookie() {
+    return resetBangumiAuth();
 }
 
 // 让 QuickAdd 可以单独调用它
+module.exports.resetBangumiAuth = resetBangumiAuth;
 module.exports.resetBangumiCookie = resetBangumiCookie;
