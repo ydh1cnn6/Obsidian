@@ -19,7 +19,7 @@ const TOKEN_STORAGE_KEY = "bangumi_to_obsidian_access_token";
 
 // ========== 模板名常量 ==========
 // 批量模式下使用的 QuickAdd 模板名（需与你 QuickAdd 里配置的动画模板名一致）
-const TEMPLATE_NAME_ANIME = "Bangumi动画-批量";
+const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
 
 // ========== 默认值常量 ==========
 // 用户在 Bangumi 未评分时的默认分（可改成你想要的默认值，比如 "0" 或 ""）
