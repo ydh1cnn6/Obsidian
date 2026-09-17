@@ -10,7 +10,7 @@
 //   - 支持 Access Token（优先）与 Cookie（兜底）双认证
 //   - 凭据持久化到 Obsidian 本地存储，重启免登录
 //   - 纯 DOM 凭据弹窗，支持校验/保存/编辑
-//   - 状态查看页面：Token 有效期（调用官方 token_status）、应用名、创建时间、Cookie 有效性
+//   - 状态查看页面：Token 有效期、应用名、创建时间、Cookie 有效性
 //   - Token 剩余不足 30 天自动提醒
 //   - 独立接口：setToken / setCookie / setTokenAndCookie / clearToken / clearCookie
 //
@@ -23,6 +23,7 @@
 //   - 勾选页面选择要生成的作品（默认全选，支持全选/全不选/反选/上一步）
 //   - 收藏结果缓存，切换收藏类型不重复拉取
 //   - 支持中断按钮，随时停止
+//   - 并发预拉取 + 内容 hash 去重 + 分类预览 + 确认执行
 //
 // 技术细节
 //   - HTML 页面请求只走 Cookie，API 请求只走 Token
@@ -42,6 +43,7 @@ const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
 // ========== 默认值常量 ==========
 const DEFAULT_SCORE_IF_EMPTY = "";
 const TOKEN_WARNING_DAYS = 30;
+const BATCH_CONCURRENCY = 4;   // ★ 并发数：直连 3-4，代理 6-8
 
 // ========== 收藏状态映射 ==========
 const COLLECTION_TYPE_MAP = {
@@ -95,6 +97,7 @@ const CRED_DIALOG_ID = "bangumi-credentials-dialog";
 const CONFIRM_DIALOG_ID = "bangumi-confirm-dialog";
 const MULTISELECT_DIALOG_ID = "bangumi-multiselect-dialog";
 const STATUS_DIALOG_ID = "bangumi-status-dialog";
+const PREVIEW_DIALOG_ID = "bangumi-preview-dialog";
 
 const notice = (msg) => new Notice(msg, 5000);
 const log = (msg) => console.log(msg);
@@ -326,7 +329,6 @@ async function getTokenExpiryInfo(token) {
                         expiryTs = Date.now() + remainingSec * 1000;
                     }
 
-                    // 解析 info 字段（JSON 字符串）
                     let name = null;
                     let createdAt = null;
                     if (data.info) {
@@ -902,7 +904,6 @@ class BangumiCredentialsDialog {
         info.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 16px 0;';
         panel.appendChild(info);
 
-        // Token 区
         const tokenSec = document.createElement('div');
         tokenSec.style.marginBottom = '16px';
         const tokenLabel = document.createElement('div');
@@ -960,7 +961,6 @@ class BangumiCredentialsDialog {
 
         panel.appendChild(tokenSec);
 
-        // Cookie 区
         const cookieSec = document.createElement('div');
         cookieSec.style.marginBottom = '16px';
         const cookieLabel = document.createElement('div');
@@ -1006,7 +1006,6 @@ class BangumiCredentialsDialog {
 
         panel.appendChild(cookieSec);
 
-        // 按钮区
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;';
 
@@ -1182,19 +1181,18 @@ class BangumiCredentialsDialog {
     }
 }
 
-// ============================== ★ 状态查看弹窗（预加载） ==============================
+// ============================== ★ 状态查看弹窗 ==============================
 class BangumiStatusDialog {
     constructor(options = {}) {
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
         this.escHandler = null;
-        // 预加载数据
         this.hasToken = !!options.hasToken;
         this.hasCookie = !!options.hasCookie;
         this.tokenInfo = options.tokenInfo || null;
         this.tokenUsername = options.tokenUsername || null;
-        this.cookieOk = options.cookieOk;   // boolean
+        this.cookieOk = options.cookieOk;
     }
 
     openAndWait() {
@@ -1250,7 +1248,6 @@ class BangumiStatusDialog {
         h2.style.cssText = 'margin: 0 0 14px 0;';
         panel.appendChild(h2);
 
-        // Token 状态
         const tokenSec = document.createElement('div');
         tokenSec.style.cssText = [
             'padding: 12px 14px',
@@ -1272,7 +1269,6 @@ class BangumiStatusDialog {
 
         panel.appendChild(tokenSec);
 
-        // Cookie 状态
         const cookieSec = document.createElement('div');
         cookieSec.style.cssText = [
             'padding: 12px 14px',
@@ -1294,7 +1290,6 @@ class BangumiStatusDialog {
 
         panel.appendChild(cookieSec);
 
-        // 按钮区
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display: flex; justify-content: space-between; gap: 10px;';
 
@@ -1429,6 +1424,185 @@ class BangumiStatusDialog {
     }
 }
 
+// ============================== ★ 预览分类弹窗 ==============================
+class BangumiPreviewDialog {
+    constructor(options = {}) {
+        this.title = options.title || '准备生成笔记';
+        this.items = options.items || [];   // { label, action }
+        this.resolveFn = null;
+        this.resolved = false;
+        this.overlay = null;
+        this.escHandler = null;
+    }
+
+    openAndWait() {
+        return new Promise((resolve) => {
+            this.resolveFn = resolve;
+            this.render();
+        });
+    }
+
+    finish(result) {
+        if (this.resolved) return;
+        this.resolved = true;
+        if (this.escHandler) {
+            document.removeEventListener('keydown', this.escHandler);
+            this.escHandler = null;
+        }
+        if (this.overlay && this.overlay.parentNode) {
+            this.overlay.parentNode.removeChild(this.overlay);
+        }
+        if (this.resolveFn) this.resolveFn(result);
+    }
+
+    render() {
+        const old = document.getElementById(PREVIEW_DIALOG_ID);
+        if (old) old.remove();
+
+        const groups = {
+            new:       this.items.filter(it => it.action === 'new'),
+            overwrite: this.items.filter(it => it.action === 'overwrite'),
+            skip:      this.items.filter(it => it.action === 'skip'),
+            error:     this.items.filter(it => it.action === 'error'),
+        };
+
+        const overlay = document.createElement('div');
+        overlay.id = PREVIEW_DIALOG_ID;
+        overlay.style.cssText = [
+            'position: fixed', 'inset: 0', 'z-index: 999998',
+            'background: rgba(0,0,0,0.55)',
+            'display: flex', 'align-items: center', 'justify-content: center',
+            'font-family: system-ui, -apple-system, "Segoe UI", sans-serif',
+        ].join(';');
+        this.overlay = overlay;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = [
+            'background: var(--background-primary, #fff)',
+            'color: var(--text-normal, #333)',
+            'border-radius: 10px',
+            'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
+            'padding: 22px 26px',
+            'width: 640px',
+            'max-width: 92vw',
+            'max-height: 88vh',
+            'display: flex', 'flex-direction: column',
+        ].join(';');
+        overlay.appendChild(panel);
+
+        const h2 = document.createElement('h2');
+        h2.textContent = '📋 ' + this.title;
+        h2.style.cssText = 'margin: 0 0 10px 0;';
+        panel.appendChild(h2);
+
+        const summary = document.createElement('div');
+        summary.style.cssText = 'font-size: 0.92em; margin-bottom: 12px; line-height: 1.7;';
+        summary.appendChild(this._makeSummaryLine('➕ 新增', groups.new.length, '#2e7d32'));
+        summary.appendChild(this._makeSummaryLine('📝 覆盖', groups.overwrite.length, '#e65100'));
+        summary.appendChild(this._makeSummaryLine('⏭️ 跳过（内容未变）', groups.skip.length, '#616161'));
+        if (groups.error.length > 0) {
+            summary.appendChild(this._makeSummaryLine('❌ 分析失败', groups.error.length, '#c62828'));
+        }
+        panel.appendChild(summary);
+
+        const listBox = document.createElement('div');
+        listBox.style.cssText = [
+            'flex: 1 1 auto',
+            'overflow-y: auto',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'border-radius: 6px',
+            'padding: 8px 10px',
+            'margin-bottom: 16px',
+            'min-height: 160px',
+            'max-height: 55vh',
+            'background: var(--background-secondary, #f8f8f8)',
+            'font-size: 0.88em',
+        ].join(';');
+
+        if (groups.overwrite.length > 0) {
+            listBox.appendChild(this._makeSection('📝 将覆盖', groups.overwrite, '#e65100'));
+        }
+        if (groups.new.length > 0) {
+            listBox.appendChild(this._makeSection('➕ 将新增', groups.new, '#2e7d32'));
+        }
+        if (groups.skip.length > 0) {
+            listBox.appendChild(this._makeSection('⏭️ 将跳过', groups.skip, '#616161'));
+        }
+        if (groups.error.length > 0) {
+            listBox.appendChild(this._makeSection('❌ 分析失败', groups.error, '#c62828'));
+        }
+
+        panel.appendChild(listBox);
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; flex: 0 0 auto;';
+
+        const cancelBtn = this._makeButton('❌ 取消', () => this.finish(false), '#757575');
+        btnRow.appendChild(cancelBtn);
+
+        const confirmBtn = this._makeButton('✅ 开始生成', () => this.finish(true), '#4caf50');
+        confirmBtn.style.fontWeight = '600';
+        btnRow.appendChild(confirmBtn);
+
+        panel.appendChild(btnRow);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.finish(false);
+        });
+        this.escHandler = (e) => {
+            if (e.key === 'Escape') this.finish(false);
+        };
+        document.addEventListener('keydown', this.escHandler);
+
+        document.body.appendChild(overlay);
+        setTimeout(() => {
+            try { confirmBtn.focus(); } catch (e) {}
+        }, 50);
+    }
+
+    _makeSummaryLine(label, count, color) {
+        const line = document.createElement('div');
+        line.style.cssText = `color: ${color}; font-weight: 500;`;
+        line.textContent = `${label}：${count}`;
+        return line;
+    }
+
+    _makeSection(title, items, color) {
+        const sec = document.createElement('div');
+        sec.style.cssText = 'margin-bottom: 10px;';
+        const head = document.createElement('div');
+        head.textContent = `${title}（${items.length}）`;
+        head.style.cssText = `color: ${color}; font-weight: 600; margin-bottom: 4px;`;
+        sec.appendChild(head);
+
+        for (const it of items) {
+            const row = document.createElement('div');
+            row.style.cssText = 'padding: 2px 0 2px 14px; color: var(--text-normal, #333);';
+            row.textContent = '· ' + it.label;
+            row.title = it.label;
+            sec.appendChild(row);
+        }
+        return sec;
+    }
+
+    _makeButton(text, onClick, bgColor) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 8px 20px', 'cursor: pointer',
+            'border-radius: 6px',
+            `background: ${bgColor}`,
+            'color: #fff',
+            'border: none',
+            'font-size: 0.92em',
+        ].join(';');
+        btn.onmouseenter = () => { btn.style.opacity = '0.88'; };
+        btn.onmouseleave = () => { btn.style.opacity = '1'; };
+        btn.onclick = onClick;
+        return btn;
+    }
+}
+
 // ============================== ★ 统一凭据保障 ==============================
 async function ensureCredentials() {
     let tokenOk = false;
@@ -1502,14 +1676,12 @@ async function showCredentials() {
         const hasToken = !!(USER_TOKEN && USER_TOKEN.trim());
         const hasCookie = !!(USER_COOKIE && USER_COOKIE.trim());
 
-        // ★ 并行预加载：三个请求同时发出
         const [tokenInfo, tokenUsername, cookieOk] = await Promise.all([
             hasToken ? getTokenExpiryInfo() : Promise.resolve(null),
             hasToken ? validateAccessToken(USER_TOKEN) : Promise.resolve(null),
             hasCookie ? checkCookieLoginOnly() : Promise.resolve(null),
         ]);
 
-        // 到期提醒（用已经拿到的数据，不再重复请求）
         if (tokenInfo && tokenInfo.ok) {
             if (tokenInfo.remainingSec <= 0) {
                 new Notice(`⚠️ Token 已过期，请尽快重新生成。\n${tokenInfo.description}`, 8000);
@@ -1518,7 +1690,6 @@ async function showCredentials() {
             }
         }
 
-        // 打开窗口，传入预加载数据
         const action = await new BangumiStatusDialog({
             hasToken,
             hasCookie,
@@ -1715,6 +1886,76 @@ async function fetchWatchedEpisodes(subjectId) {
     return result;
 }
 
+// ============================== ★ 并发池 & 内容 hash 工具 ==============================
+
+/**
+ * 简单并发池
+ */
+async function runConcurrent(items, limit, worker) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    async function runner() {
+        while (true) {
+            if (BATCH_ABORT) return;
+            const myIndex = nextIndex++;
+            if (myIndex >= items.length) return;
+            try {
+                results[myIndex] = await worker(items[myIndex], myIndex);
+            } catch (e) {
+                results[myIndex] = { __error: e.message };
+            }
+        }
+    }
+
+    const runners = [];
+    const concurrency = Math.max(1, Math.min(limit, items.length));
+    for (let i = 0; i < concurrency; i++) {
+        runners.push(runner());
+    }
+    await Promise.all(runners);
+    return results;
+}
+
+/**
+ * 计算 Info 关键字段的稳定 hash
+ */
+function computeInfoHash(Info) {
+    const payload = JSON.stringify({
+        url: Info.url || "",
+        tags: Array.isArray(Info.tags) ? [...Info.tags].sort() : [],
+        score: Info.score || "",
+        collectionType: Info.collectionType || "",
+        paraList: Info.paraList || "",
+        OpEd: Info.OpEd || "",
+        summary: Info.summary || "",
+        director: Info.director || "",
+        date: Info.date || "",
+        episode: Info.episode || "",
+    });
+    let h = 0;
+    for (let i = 0; i < payload.length; i++) {
+        h = ((h << 5) - h + payload.charCodeAt(i)) | 0;
+    }
+    return String(h);
+}
+
+/**
+ * 读取已有文件的 bangumi_hash
+ */
+async function readExistingHash(targetPath) {
+    const file = app.vault.getAbstractFileByPath(targetPath);
+    if (!file) return null;
+    try {
+        const content = await app.vault.read(file);
+        const m = content.match(/bangumi_hash:\s*"?([^"\n\r]+)"?/);
+        return m ? m[1].trim() : null;
+    } catch (e) {
+        log(`读取已有文件失败：${targetPath} - ${e.message}`);
+        return null;
+    }
+}
+
 // ============================== 批量中断按钮 ==============================
 function showAbortButton() {
     const old = document.getElementById(ABORT_BTN_ID);
@@ -1766,8 +2007,9 @@ async function bangumiBatch(QuickAddInstance) {
     const defaultChecked = ["想看", "在看", "看过"];
 
     const collectionCache = new Map();
-    let subjects = null;
+    let chosenSubjects = null;
 
+    // ===== 阶段 1：选择收藏类型 + 勾选作品 =====
     while (true) {
         const selectedLabels = await QuickAdd.quickAddApi.checkboxPrompt(allLabels, defaultChecked);
         if (!selectedLabels || selectedLabels.length === 0) {
@@ -1777,7 +2019,6 @@ async function bangumiBatch(QuickAddInstance) {
         const typesToFetch = selectedLabels.map(l => COLLECTION_LABEL_TO_TYPE[l]).filter(Boolean);
 
         const needFetch = typesToFetch.filter(t => !collectionCache.has(t));
-
         if (needFetch.length === 0) {
             new Notice(`正在使用已缓存的收藏（${selectedLabels.join("、")}）…`, 3000);
         } else {
@@ -1790,15 +2031,12 @@ async function bangumiBatch(QuickAddInstance) {
             let items;
             if (collectionCache.has(t)) {
                 items = collectionCache.get(t);
-                log(`[缓存命中] type=${t}，共 ${items.length} 条`);
             } else {
                 try {
                     items = await fetchAllCollections(2, t);
                     collectionCache.set(t, items);
-                    log(`[拉取完成] type=${t}，共 ${items.length} 条`);
                 } catch (e) {
                     new Notice(`拉取「${COLLECTION_TYPE_MAP[t]}」失败：${e.message}`, 6000);
-                    log(`拉取失败: ${e.message}`);
                     continue;
                 }
             }
@@ -1833,7 +2071,7 @@ async function bangumiBatch(QuickAddInstance) {
                 id: s.subject_id,
                 label: s.subject?.name_cn || s.subject?.name || String(s.subject_id),
             })),
-            confirmText: '✅ 开始生成',
+            confirmText: '✅ 下一步',
             cancelText: '❌ 取消',
             backButtonText: '⬅ 上一步',
             confirmColor: '#4caf50',
@@ -1843,74 +2081,154 @@ async function bangumiBatch(QuickAddInstance) {
             new Notice("操作已取消。", 4000);
             return;
         }
-
-        if (result === BACK_SIGNAL) {
-            log("[多选弹窗] 用户点击上一步，返回收藏类型选择");
-            continue;
-        }
-
+        if (result === BACK_SIGNAL) continue;
         if (Array.isArray(result) && result.length > 0) {
             const chosenSet = new Set(result);
-            subjects = allSubjects.filter(s => chosenSet.has(s.subject_id));
+            chosenSubjects = allSubjects.filter(s => chosenSet.has(s.subject_id));
             break;
         }
-
         new Notice("未选择任何动画，请重新选择或取消。", 4000);
-        continue;
     }
 
-    if (!subjects || subjects.length === 0) {
+    if (!chosenSubjects || chosenSubjects.length === 0) {
         new Notice("未选择任何动画，已中止。", 4000);
         return;
     }
 
+    // ===== 阶段 2：并发预拉取 + 分类 =====
+    const TARGET_FOLDER = "";   // ★ 改成你的模板实际输出目录，例如 "动漫"、"ACG/Bangumi"
+
+    let doneCount = 0;
+    let lastNoticeTime = 0;
+    const prepared = new Array(chosenSubjects.length);
+
+    showAbortButton();
+
+    try {
+        await runConcurrent(
+            chosenSubjects,
+            BATCH_CONCURRENCY,
+            async (item, index) => {
+                const subjectUrl = `https://bgm.tv/subject/${item.subject_id}`;
+                const displayName = item.subject?.name_cn || item.subject?.name || String(item.subject_id);
+
+                try {
+                    const watchedSet = await fetchWatchedEpisodes(item.subject_id);
+                    const Info = await getAnimeByurl(subjectUrl, {
+                        watchedSet,
+                        apiName: item.subject?.name || "",
+                        apiNameCn: item.subject?.name_cn || "",
+                    });
+
+                    if (Array.isArray(item.userTags) && item.userTags.length > 0) {
+                        Info.tags = item.userTags;
+                    } else {
+                        Info.tags = Info.tagsRecommendArray || [];
+                    }
+                    Info.url = subjectUrl;
+                    Info.score = (item.rate && Number(item.rate) > 0) ? String(item.rate) : DEFAULT_SCORE_IF_EMPTY;
+                    Info.collectionType = item.collectionType;
+                    Info.collectionTypeName = COLLECTION_TYPE_MAP[item.collectionType];
+
+                    const hash = computeInfoHash(Info);
+                    Info.bangumi_hash = hash;
+
+                    const targetPath = TARGET_FOLDER
+                        ? `${TARGET_FOLDER}/${Info.fileName}.md`
+                        : `${Info.fileName}.md`;
+
+                    const existingHash = await readExistingHash(targetPath);
+                    let action;
+                    if (existingHash === null) {
+                        action = app.vault.getAbstractFileByPath(targetPath) ? 'overwrite' : 'new';
+                    } else if (existingHash === hash) {
+                        action = 'skip';
+                    } else {
+                        action = 'overwrite';
+                    }
+
+                    prepared[index] = {
+                        item, Info, hash, targetPath, action, displayName,
+                    };
+                } catch (e) {
+                    prepared[index] = {
+                        item, Info: null, hash: null, targetPath: null,
+                        action: 'error', displayName,
+                        errorMsg: e.message,
+                    };
+                    log(`[预分析失败] ${item.subject_id} ${displayName}: ${e.message}`);
+                } finally {
+                    doneCount++;
+                    const now = Date.now();
+                    if (now - lastNoticeTime > 800 || doneCount === chosenSubjects.length) {
+                        lastNoticeTime = now;
+                        new Notice(`分析进度：${doneCount} / ${chosenSubjects.length}`, 1500);
+                    }
+                }
+            }
+        );
+    } finally {
+        hideAbortButton();
+    }
+
+    if (BATCH_ABORT) {
+        new Notice("分析阶段已中断，未生成任何笔记。", 5000);
+        return;
+    }
+
+    // ===== 阶段 3：预览 =====
+    const previewItems = prepared.map(p => ({
+        label: p.action === 'error'
+            ? `${p.displayName}（${p.errorMsg}）`
+            : p.displayName,
+        action: p.action,
+    }));
+
+    const doProceed = await new BangumiPreviewDialog({
+        title: '准备生成笔记',
+        items: previewItems,
+    }).openAndWait();
+
+    if (!doProceed) {
+        new Notice("已取消，未生成任何笔记。", 4000);
+        return;
+    }
+
+    // ===== 阶段 4：串行生成 =====
     showAbortButton();
 
     let success = 0;
     let failed = 0;
+    let skipped = 0;
     let aborted = false;
     const failedList = [];
 
     try {
-        for (let i = 0; i < subjects.length; i++) {
+        for (let i = 0; i < prepared.length; i++) {
             if (BATCH_ABORT) { aborted = true; break; }
 
-            const item = subjects[i];
-            const subjectUrl = `https://bgm.tv/subject/${item.subject_id}`;
-            const displayName = item.subject?.name_cn || item.subject?.name || String(item.subject_id);
+            const p = prepared[i];
 
-            new Notice(`[${i + 1}/${subjects.length}] 正在处理：${displayName}`, 3000);
+            if (p.action === 'skip') {
+                skipped++;
+                log(`[跳过] 内容未变：${p.targetPath}`);
+                continue;
+            }
+            if (p.action === 'error') {
+                failed++;
+                failedList.push(`${p.item.subject_id} ${p.displayName}：${p.errorMsg}`);
+                continue;
+            }
+
+            new Notice(`[${i + 1}/${prepared.length}] 生成：${p.displayName}`, 3000);
 
             try {
-                const watchedSet = await fetchWatchedEpisodes(item.subject_id);
-                const Info = await getAnimeByurl(subjectUrl, {
-                    watchedSet,
-                    apiName: item.subject?.name || "",
-                    apiNameCn: item.subject?.name_cn || "",
-                });
-
-                if (Array.isArray(item.userTags) && item.userTags.length > 0) {
-                    Info.tags = item.userTags;
-                } else {
-                    Info.tags = Info.tagsRecommendArray || [];
-                }
-                Info.url = subjectUrl;
-
-                if (item.rate && Number(item.rate) > 0) {
-                    Info.score = String(item.rate);
-                } else {
-                    Info.score = DEFAULT_SCORE_IF_EMPTY;
-                }
-
-                Info.collectionType = item.collectionType;
-                Info.collectionTypeName = COLLECTION_TYPE_MAP[item.collectionType];
-
-                await QuickAdd.quickAddApi.executeChoice(TEMPLATE_NAME_ANIME, Info);
+                await QuickAdd.quickAddApi.executeChoice(TEMPLATE_NAME_ANIME, p.Info);
                 success++;
             } catch (e) {
                 failed++;
-                failedList.push(`${item.subject_id} ${displayName}：${e.message}`);
-                console.error(`[批量] 处理失败`, item.subject_id, e);
+                failedList.push(`${p.item.subject_id} ${p.displayName}：${e.message}`);
+                console.error(`[批量] 处理失败`, p.item.subject_id, e);
             }
         }
     } finally {
@@ -1919,9 +2237,10 @@ async function bangumiBatch(QuickAddInstance) {
 
     const summary =
         (aborted ? `已中断（用户主动停止）\n\n` : `批量生成完成\n`) +
-        `成功：${success}\n` +
+        `新增/覆盖：${success}\n` +
+        `跳过（内容未变）：${skipped}\n` +
         `失败：${failed}` +
-        (aborted ? `\n未处理：${subjects.length - success - failed}` : "") +
+        (aborted ? `\n未处理：${prepared.length - success - failed - skipped}` : "") +
         (failedList.length > 0 ? `\n\n失败列表：\n${failedList.join("\n")}` : "");
     new Notice(summary, 10000);
     log(summary);
@@ -1937,7 +2256,6 @@ function extractBaseInfo(doc, type) {
     const nameArr = workingname.split(",");
     workinginfo.CN = (nameArr[0]?.replace(regex, ' ') || " ").trim() || " ";
     workinginfo.JP = (nameArr[1]?.replace(regex, ' ') || " ").trim() || " ";
-    // ★ 新增别名：name/name_cn 分别映射到 JP/CN，方便模板统一使用
     workinginfo.name_cn = workinginfo.CN;
     workinginfo.name = workinginfo.JP;
     workinginfo.fileName = `${workinginfo.CN}_${workinginfo.JP}`.trim() || "未知作品";
@@ -2212,10 +2530,8 @@ async function getAnimeByurl(url, options = {}) {
 
     const workinginfo = extractBaseInfo(doc, "anime");
 
-    // ★ API 优先：如果传入了 API 名字，覆盖 HTML 解析出的名字
     if (options.apiName) workinginfo.JP = options.apiName;
     if (options.apiNameCn) workinginfo.CN = options.apiNameCn;
-    // 同步 name/name_cn 别名
     workinginfo.name = workinginfo.JP || " ";
     workinginfo.name_cn = workinginfo.CN || " ";
     workinginfo.fileName = `${workinginfo.CN}_${workinginfo.JP}`.trim() || "未知作品";
