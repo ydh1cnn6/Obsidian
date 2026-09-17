@@ -17,6 +17,7 @@
 //modify: ★ BangumiMultiSelectDialog 勾选弹窗
 //modify: ★ 多选弹窗支持「上一步」返回重选收藏类型；收藏结果缓存避免重复拉取
 //modify: ★ 新增 clearToken / clearCookie / setToken / setCookie / setTokenAndCookie 接口
+//modify: ★【本次新增】showCredentials 状态查看页面；getTokenExpiryEstimate 改为调用官方 /oauth/token_status 接口
 
 // ========== 存储键名 ==========
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
@@ -80,6 +81,7 @@ const ABORT_BTN_ID = "bangumi-batch-abort-btn";
 const CRED_DIALOG_ID = "bangumi-credentials-dialog";
 const CONFIRM_DIALOG_ID = "bangumi-confirm-dialog";
 const MULTISELECT_DIALOG_ID = "bangumi-multiselect-dialog";
+const STATUS_DIALOG_ID = "bangumi-status-dialog";
 
 const notice = (msg) => new Notice(msg, 5000);
 const log = (msg) => console.log(msg);
@@ -114,6 +116,7 @@ module.exports.clearCookie = clearCookie;
 module.exports.setToken = setToken;
 module.exports.setCookie = setCookie;
 module.exports.setTokenAndCookie = setTokenAndCookie;
+module.exports.showCredentials = showCredentials;
 
 let QuickAdd;
 let pageNum = 1;
@@ -269,16 +272,55 @@ function isValidBangumiCookie(cookieStr) {
     return cookieStr.includes("chii_auth=");
 }
 
-function getTokenExpiryEstimate() {
-    if (!TOKEN_SAVED_AT || !USER_TOKEN || !USER_TOKEN.trim()) return "未记录保存时间";
+/**
+ * 查询 Token 真实剩余有效期
+ * 优先调用 Bangumi 官方 /oauth/token_status 接口
+ * 失败时回退到基于保存时间的估算
+ * @param {string} [token] - 可选，不传使用全局 USER_TOKEN
+ * @returns {Promise<string>} 人类可读描述
+ */
+async function getTokenExpiryEstimate(token) {
+    const tk = token || USER_TOKEN;
+    if (!tk || !tk.trim()) return "未设置";
+
+    // 1. 官方接口
+    try {
+        const url = `https://bgm.tv/oauth/token_status?access_token=${encodeURIComponent(tk.trim())}`;
+        const res = await request({
+            url: url,
+            method: "POST",
+            headers: {
+                "User-Agent": COMMON_HEADERS["User-Agent"],
+                "Accept": "application/json",
+            },
+        });
+        if (res) {
+            try {
+                const data = JSON.parse(res);
+                if (data && typeof data.expires === "number") {
+                    const totalSec = data.expires;
+                    if (totalSec <= 0) return "⚠️ 已过期";
+                    const days = Math.floor(totalSec / 86400);
+                    const hours = Math.floor((totalSec % 86400) / 3600);
+                    if (days > 0) return `约剩余 ${days} 天 ${hours} 小时（官方接口）`;
+                    return `约剩余 ${hours} 小时（官方接口）`;
+                }
+            } catch (e) {
+                log(`Token 状态解析失败: ${e.message}`);
+            }
+        }
+    } catch (e) {
+        log(`Token 状态 API 查询失败: ${e.message}`);
+    }
+
+    // 2. 回退估算
+    if (!TOKEN_SAVED_AT) return "未记录保存时间（估算不可用）";
     const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
     const elapsed = Date.now() - TOKEN_SAVED_AT;
     const remaining = ONE_YEAR_MS - elapsed;
     if (remaining <= 0) return "⚠️ 估算已过期（超过 1 年）";
     const days = Math.floor(remaining / (24 * 60 * 60 * 1000));
-    const savedDate = new Date(TOKEN_SAVED_AT);
-    const expiryDate = new Date(TOKEN_SAVED_AT + ONE_YEAR_MS);
-    return `约剩余 ${days} 天（保存于 ${savedDate.toLocaleDateString()}，估算到期 ${expiryDate.toLocaleDateString()}）`;
+    return `约剩余 ${days} 天（估算，官方接口不可用）`;
 }
 
 // ============================== 凭据持久化 ==============================
@@ -701,6 +743,7 @@ class BangumiMultiSelectDialog {
 class BangumiCredentialsDialog {
     constructor(options = {}) {
         this.requireBoth = options.requireBoth !== false;
+        this.focusField = options.focusField || 'auto'; // 'token' | 'cookie' | 'auto'
         this.resolveFn = null;
         this.resolved = false;
         this.tokenValid = false;
@@ -774,6 +817,7 @@ class BangumiCredentialsDialog {
         info.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 16px 0;';
         panel.appendChild(info);
 
+        // ---- Token 区 ----
         const tokenSec = document.createElement('div');
         tokenSec.style.marginBottom = '16px';
         const tokenLabel = document.createElement('div');
@@ -809,14 +853,26 @@ class BangumiCredentialsDialog {
 
         const tokenStatus = document.createElement('div');
         tokenStatus.style.cssText = 'font-size: 0.85em; margin-top: 5px; color: var(--text-muted, #888);';
-        tokenStatus.textContent = USER_TOKEN
-            ? `已保存 | ${getTokenExpiryEstimate()}`
-            : '未设置';
         this.tokenStatusEl = tokenStatus;
+        if (USER_TOKEN) {
+            tokenStatus.textContent = `已保存 | 正在查询到期时间…`;
+            getTokenExpiryEstimate().then(exp => {
+                if (this.tokenStatusEl === tokenStatus) {
+                    tokenStatus.textContent = `已保存 | ${exp}`;
+                }
+            }).catch(() => {
+                if (this.tokenStatusEl === tokenStatus) {
+                    tokenStatus.textContent = `已保存`;
+                }
+            });
+        } else {
+            tokenStatus.textContent = '未设置';
+        }
         tokenSec.appendChild(tokenStatus);
 
         panel.appendChild(tokenSec);
 
+        // ---- Cookie 区 ----
         const cookieSec = document.createElement('div');
         cookieSec.style.marginBottom = '16px';
         const cookieLabel = document.createElement('div');
@@ -862,6 +918,7 @@ class BangumiCredentialsDialog {
 
         panel.appendChild(cookieSec);
 
+        // ---- 按钮区 ----
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;';
 
@@ -885,10 +942,15 @@ class BangumiCredentialsDialog {
 
         document.body.appendChild(overlay);
 
+        // 自动聚焦
         setTimeout(() => {
             try {
-                if (!USER_TOKEN) tokenInput.focus();
-                else if (!USER_COOKIE) cookieInput.focus();
+                if (this.focusField === 'token') tokenInput.focus();
+                else if (this.focusField === 'cookie') cookieInput.focus();
+                else {
+                    if (!USER_TOKEN) tokenInput.focus();
+                    else if (!USER_COOKIE) cookieInput.focus();
+                }
             } catch (e) {}
         }, 50);
     }
@@ -1029,6 +1091,218 @@ class BangumiCredentialsDialog {
     }
 }
 
+// ============================== ★ 状态查看弹窗 ==============================
+class BangumiStatusDialog {
+    constructor(options = {}) {
+        this.resolveFn = null;
+        this.resolved = false;
+        this.overlay = null;
+        this.escHandler = null;
+    }
+
+    openAndWait() {
+        return new Promise((resolve) => {
+            this.resolveFn = resolve;
+            this.render();
+        });
+    }
+
+    finish(result) {
+        if (this.resolved) return;
+        this.resolved = true;
+        if (this.escHandler) {
+            document.removeEventListener('keydown', this.escHandler);
+            this.escHandler = null;
+        }
+        if (this.overlay && this.overlay.parentNode) {
+            this.overlay.parentNode.removeChild(this.overlay);
+        }
+        if (this.resolveFn) this.resolveFn(result);
+    }
+
+    render() {
+        const old = document.getElementById(STATUS_DIALOG_ID);
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = STATUS_DIALOG_ID;
+        overlay.style.cssText = [
+            'position: fixed', 'inset: 0', 'z-index: 999998',
+            'background: rgba(0,0,0,0.55)',
+            'display: flex', 'align-items: center', 'justify-content: center',
+            'font-family: system-ui, -apple-system, "Segoe UI", sans-serif',
+        ].join(';');
+        this.overlay = overlay;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = [
+            'background: var(--background-primary, #fff)',
+            'color: var(--text-normal, #333)',
+            'border-radius: 10px',
+            'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
+            'padding: 22px 26px',
+            'width: 620px',
+            'max-width: 92vw',
+            'max-height: 88vh',
+            'overflow-y: auto',
+        ].join(';');
+        overlay.appendChild(panel);
+
+        const h2 = document.createElement('h2');
+        h2.textContent = '📋 Bangumi 凭据状态';
+        h2.style.cssText = 'margin: 0 0 14px 0;';
+        panel.appendChild(h2);
+
+        // ---- Token 状态 ----
+        const tokenSec = document.createElement('div');
+        tokenSec.style.cssText = [
+            'padding: 12px 14px',
+            'background: var(--background-secondary, #f8f8f8)',
+            'border-radius: 8px',
+            'margin-bottom: 12px',
+        ].join(';');
+
+        const tokenTitle = document.createElement('div');
+        tokenTitle.textContent = '🔑 Access Token';
+        tokenTitle.style.cssText = 'font-weight: 600; margin-bottom: 8px;';
+        tokenSec.appendChild(tokenTitle);
+
+        const tokenInfoEl = document.createElement('div');
+        tokenInfoEl.style.cssText = 'font-size: 0.9em; line-height: 1.7;';
+        tokenInfoEl.textContent = '查询中…';
+        tokenSec.appendChild(tokenInfoEl);
+
+        panel.appendChild(tokenSec);
+
+        // ---- Cookie 状态 ----
+        const cookieSec = document.createElement('div');
+        cookieSec.style.cssText = [
+            'padding: 12px 14px',
+            'background: var(--background-secondary, #f8f8f8)',
+            'border-radius: 8px',
+            'margin-bottom: 16px',
+        ].join(';');
+
+        const cookieTitle = document.createElement('div');
+        cookieTitle.textContent = '🍪 Cookie';
+        cookieTitle.style.cssText = 'font-weight: 600; margin-bottom: 8px;';
+        cookieSec.appendChild(cookieTitle);
+
+        const cookieInfoEl = document.createElement('div');
+        cookieInfoEl.style.cssText = 'font-size: 0.9em; line-height: 1.7;';
+        cookieInfoEl.textContent = '查询中…';
+        cookieSec.appendChild(cookieInfoEl);
+
+        panel.appendChild(cookieSec);
+
+        // ---- 按钮区 ----
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display: flex; justify-content: space-between; gap: 10px;';
+
+        const leftGroup = document.createElement('div');
+        leftGroup.style.cssText = 'display: flex; gap: 10px;';
+
+        const editBtn = this._makeButton('✏️ 编辑凭据', () => {
+            this.finish('edit');
+        }, '#2196f3');
+        leftGroup.appendChild(editBtn);
+
+        const refreshBtn = this._makeButton('🔄 刷新', () => {
+            this.finish('refresh');
+        }, '#607d8b');
+        leftGroup.appendChild(refreshBtn);
+
+        btnRow.appendChild(leftGroup);
+
+        const closeBtn = this._makeButton('关闭', () => {
+            this.finish('close');
+        }, '#757575');
+        btnRow.appendChild(closeBtn);
+
+        panel.appendChild(btnRow);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === target) this.finish('close');
+        });
+
+        this.escHandler = (e) => {
+            if (e.key === 'Escape') this.finish('close');
+        };
+        document.addEventListener('keydown', this.escHandler);
+
+        document.body.appendChild(overlay);
+
+        // ---- 异步查询状态 ----
+        (async () => {
+            // Token 状态
+            if (USER_TOKEN && USER_TOKEN.trim()) {
+                const username = await validateAccessToken(USER_TOKEN);
+                const expiry = await getTokenExpiryEstimate();
+                const tokenDisplay = USER_TOKEN.slice(0, 8) + "..." + USER_TOKEN.slice(-6);
+                tokenInfoEl.innerHTML = '';
+                tokenInfoEl.appendChild(this._makeLine('状态', username ? `✅ 有效` : `❌ 无效`));
+                if (username) {
+                    tokenInfoEl.appendChild(this._makeLine('用户', username));
+                }
+                tokenInfoEl.appendChild(this._makeLine('到期', expiry));
+                tokenInfoEl.appendChild(this._makeLine('令牌', tokenDisplay));
+            } else {
+                tokenInfoEl.textContent = '❌ 未设置';
+                tokenInfoEl.style.color = 'var(--text-muted, #888)';
+            }
+
+            // Cookie 状态
+            if (USER_COOKIE && USER_COOKIE.trim()) {
+                const ok = await checkCookieLoginOnly();
+                const cookieDisplay = USER_COOKIE.length > 60
+                    ? USER_COOKIE.slice(0, 60) + "..."
+                    : USER_COOKIE;
+                cookieInfoEl.innerHTML = '';
+                cookieInfoEl.appendChild(this._makeLine('状态', ok ? '✅ 有效' : '❌ 无效'));
+                cookieInfoEl.appendChild(this._makeLine('长度', `${USER_COOKIE.length} 字符`));
+                const preview = document.createElement('div');
+                preview.style.cssText = 'margin-top: 6px; font-family: monospace; font-size: 0.8em; word-break: break-all; color: var(--text-muted, #888);';
+                preview.textContent = cookieDisplay;
+                cookieInfoEl.appendChild(preview);
+            } else {
+                cookieInfoEl.textContent = '❌ 未设置';
+                cookieInfoEl.style.color = 'var(--text-muted, #888)';
+            }
+        })();
+    }
+
+    _makeLine(label, value) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display: flex; gap: 10px;';
+        const l = document.createElement('span');
+        l.textContent = label + '：';
+        l.style.cssText = 'color: var(--text-muted, #888); flex: 0 0 auto;';
+        row.appendChild(l);
+        const v = document.createElement('span');
+        v.textContent = value;
+        v.style.cssText = 'flex: 1; word-break: break-all;';
+        row.appendChild(v);
+        return row;
+    }
+
+    _makeButton(text, onClick, bgColor) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 8px 20px', 'cursor: pointer',
+            'border-radius: 6px',
+            `background: ${bgColor}`,
+            'color: #fff',
+            'border: none',
+            'font-size: 0.92em',
+        ].join(';');
+        btn.onmouseenter = () => { btn.style.opacity = '0.88'; };
+        btn.onmouseleave = () => { btn.style.opacity = '1'; };
+        btn.onclick = onClick;
+        return btn;
+    }
+}
+
 // ============================== ★ 统一凭据保障 ==============================
 async function ensureCredentials() {
     let tokenOk = false;
@@ -1073,7 +1347,7 @@ async function updateCookieOnly(QuickAddInstance) {
     }
     await openBangumiLoginPage();
     new Notice("已打开登录页。登录后复制 Cookie 回到 Obsidian。", 8000);
-    const dialog = new BangumiCredentialsDialog({ requireBoth: false });
+    const dialog = new BangumiCredentialsDialog({ requireBoth: false, focusField: 'cookie' });
     const ok = await dialog.openAndWait();
     if (!ok) new Notice("操作已取消。", 4000);
 }
@@ -1085,7 +1359,7 @@ async function updateTokenOnly(QuickAddInstance) {
     }
     await openBangumiTokenPage();
     new Notice("已打开 Token 生成页。生成后复制令牌回到 Obsidian。", 8000);
-    const dialog = new BangumiCredentialsDialog({ requireBoth: false });
+    const dialog = new BangumiCredentialsDialog({ requireBoth: false, focusField: 'token' });
     const ok = await dialog.openAndWait();
     if (!ok) new Notice("操作已取消。", 4000);
 }
@@ -1094,140 +1368,118 @@ async function ensureBatchCredentials() {
     return ensureCredentials();
 }
 
-// ============================== ★ 独立接口：清理 / 设置凭据 ==============================
+// ============================== ★ 独立接口：查看 / 设置 / 清理 ==============================
 
 /**
- * 清理 Token
+ * 查看凭据状态（弹窗）
+ * 可以反复刷新、直接跳到编辑
  */
-async function clearToken(silent = false) {
+async function showCredentials() {
+    while (true) {
+        const action = await new BangumiStatusDialog().openAndWait();
+        if (action === 'edit') {
+            const dialog = new BangumiCredentialsDialog({ requireBoth: false });
+            await dialog.openAndWait();
+            // 编辑后回到状态页面
+            continue;
+        }
+        if (action === 'refresh') {
+            // 重新打开就是刷新
+            continue;
+        }
+        // close
+        break;
+    }
+    return true;
+}
+
+/**
+ * 设置 Token（弹窗）
+ */
+async function setToken() {
+    const dialog = new BangumiCredentialsDialog({
+        requireBoth: false,
+        focusField: 'token',
+    });
+    return await dialog.openAndWait();
+}
+
+/**
+ * 设置 Cookie（弹窗）
+ */
+async function setCookie() {
+    const dialog = new BangumiCredentialsDialog({
+        requireBoth: false,
+        focusField: 'cookie',
+    });
+    return await dialog.openAndWait();
+}
+
+/**
+ * 设置 Token 和 Cookie（弹窗）
+ */
+async function setTokenAndCookie() {
+    const dialog = new BangumiCredentialsDialog({
+        requireBoth: false,
+        focusField: 'auto',
+    });
+    return await dialog.openAndWait();
+}
+
+/**
+ * 清理 Token（带确认 + 提醒）
+ */
+async function clearToken() {
+    if (!USER_TOKEN || !USER_TOKEN.trim()) {
+        new Notice("当前没有保存 Token。", 3000);
+        return false;
+    }
+    const confirmed = await new BangumiConfirmDialog({
+        title: '清理 Access Token',
+        message: '确定要清除已保存的 Access Token 吗？\n\n清除后下次运行需要重新输入。',
+        confirmText: '🗑️ 清除',
+        cancelText: '取消',
+        confirmColor: '#c62828',
+    }).openAndWait();
+
+    if (!confirmed) {
+        new Notice("已取消清理。", 3000);
+        return false;
+    }
+
     clearPersistedToken();
     USER_TOKEN = "";
-    if (!silent) {
-        new Notice("已清除 Access Token。", 4000);
-    }
+    new Notice("✅ 已清除 Access Token。", 4000);
     log("[clearToken] Token 已清除");
     return true;
 }
 
 /**
- * 清理 Cookie
+ * 清理 Cookie（带确认 + 提醒）
  */
-async function clearCookie(silent = false) {
+async function clearCookie() {
+    if (!USER_COOKIE || !USER_COOKIE.trim()) {
+        new Notice("当前没有保存 Cookie。", 3000);
+        return false;
+    }
+    const confirmed = await new BangumiConfirmDialog({
+        title: '清理 Cookie',
+        message: '确定要清除已保存的 Cookie 吗？\n\n清除后下次运行需要重新输入。',
+        confirmText: '🗑️ 清除',
+        cancelText: '取消',
+        confirmColor: '#c62828',
+    }).openAndWait();
+
+    if (!confirmed) {
+        new Notice("已取消清理。", 3000);
+        return false;
+    }
+
     clearPersistedCookie();
     USER_COOKIE = "";
-    if (!silent) {
-        new Notice("已清除 Cookie。", 4000);
-    }
+    new Notice("✅ 已清除 Cookie。", 4000);
     log("[clearCookie] Cookie 已清除");
     return true;
-}
-
-/**
- * 设置 Token
- */
-async function setToken(token) {
-    let input = token;
-
-    if (!input) {
-        const fromClipboard = readClipboardTextSync();
-        const clipboardIsToken = fromClipboard
-            && fromClipboard.length > 20
-            && !fromClipboard.includes(' ')
-            && !fromClipboard.includes('=')
-            && !fromClipboard.includes(';');
-        const defaultValue = (clipboardIsToken ? fromClipboard : "") || "在此粘贴 Access Token";
-        input = await QuickAdd.quickAddApi.inputPrompt(
-            "输入 Access Token\n（在 https://next.bgm.tv/demo/access-token 生成）",
-            defaultValue
-        );
-        if (input === null) {
-            new Notice("已取消。", 3000);
-            return false;
-        }
-    }
-
-    input = String(input || "").trim();
-    if (!input) {
-        new Notice("Token 为空。", 3000);
-        return false;
-    }
-
-    new Notice("正在校验 Token…", 3000);
-    const username = await validateAccessToken(input);
-    if (!username) {
-        new Notice("Token 无效 ❌", 4000);
-        return false;
-    }
-
-    USER_TOKEN = input;
-    USER_NAME = username;
-    persistToken(input);
-    new Notice(`Token 已保存 ✅ 用户：${username}`, 4000);
-    log(`[setToken] 已保存，用户=${username}`);
-    return true;
-}
-
-/**
- * 设置 Cookie
- */
-async function setCookie(cookie) {
-    let input = cookie;
-
-    if (!input) {
-        const fromClipboard = readClipboardTextSync();
-        const cleanedFromClipboard = fromClipboard ? sanitizeCookieInput(fromClipboard) : "";
-        const clipboardIsCookie = isValidBangumiCookie(cleanedFromClipboard);
-        const defaultValue = (clipboardIsCookie ? cleanedFromClipboard : "")
-            || "chii_auth=...; chii_sec_id=...; chii_sid=...";
-        input = await QuickAdd.quickAddApi.inputPrompt(
-            "输入 Cookie\n（从浏览器 F12 → Application → Cookies → https://bgm.tv 复制）",
-            defaultValue
-        );
-        if (input === null) {
-            new Notice("已取消。", 3000);
-            return false;
-        }
-    }
-
-    const cleaned = sanitizeCookieInput(String(input || "").trim());
-    if (!isValidBangumiCookie(cleaned)) {
-        new Notice("Cookie 无效（缺少 chii_auth）❌", 5000);
-        return false;
-    }
-
-    new Notice("正在校验 Cookie…", 3000);
-    const ok = await checkCookieLoginTemp(cleaned);
-    if (!ok) {
-        new Notice("Cookie 校验失败 ❌（可能已过期或复制不完整）", 5000);
-        return false;
-    }
-
-    USER_COOKIE = cleaned;
-    persistCookie(cleaned);
-    new Notice("Cookie 已保存 ✅", 4000);
-    log("[setCookie] Cookie 已保存");
-    return true;
-}
-
-/**
- * 一次性设置 Token 和 Cookie
- */
-async function setTokenAndCookie(token, cookie) {
-    let tokenOk = false;
-    let cookieOk = false;
-
-    if (token !== undefined || cookie === undefined) {
-        tokenOk = await setToken(token);
-    }
-    if (cookie !== undefined || token === undefined) {
-        cookieOk = await setCookie(cookie);
-    }
-
-    new Notice(
-        `设置完成\nToken：${tokenOk ? "✅" : "❌"}\nCookie：${cookieOk ? "✅" : "❌"}`,
-        5000
-    );
-    return { tokenOk, cookieOk };
 }
 
 // ============================== 调试 ==============================
@@ -1235,7 +1487,7 @@ async function debugAuthState() {
     console.log("=== Bangumi 凭据状态 ===");
     console.log("Token:", USER_TOKEN ? `已设置 (${USER_TOKEN.slice(0, 8)}...)` : "空");
     console.log("Token 保存时间:", TOKEN_SAVED_AT ? new Date(TOKEN_SAVED_AT).toLocaleString() : "未知");
-    console.log("Token 过期估算:", getTokenExpiryEstimate());
+    console.log("Token 过期查询:", await getTokenExpiryEstimate());
     console.log("Cookie:", USER_COOKIE ? `已设置 (${USER_COOKIE.slice(0, 30)}...)` : "空");
     console.log("USER_NAME:", USER_NAME || "空");
     try {
@@ -1248,7 +1500,7 @@ async function debugAuthState() {
         hasToken: !!USER_TOKEN,
         hasCookie: !!USER_COOKIE,
         tokenSavedAt: TOKEN_SAVED_AT,
-        expiryEstimate: getTokenExpiryEstimate(),
+        expiryEstimate: await getTokenExpiryEstimate(),
     };
 }
 
