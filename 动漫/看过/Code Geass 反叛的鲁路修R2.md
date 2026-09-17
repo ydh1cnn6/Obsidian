@@ -1,34 +1,34 @@
 ---
-笔记ID: "20260917175324"
-别名: "叛逆的鲁路修R2,Code Geass: Hangyaku no Lelouch R2,叛逆的勒鲁什R2,叛逆的鲁鲁修R2,コードギアス 反逆のルルーシュR2,Code Geass: Lelouch of the Rebellion R2,叛逆的勒路什R2"
-tags: [机战,TV,日本,原创,战斗]
+笔记ID: "20260917181747"
+别名: "叛逆的鲁路修R2、Code Geass: Hangyaku no Lelouch R2、叛逆的勒鲁什R2、叛逆的鲁鲁修R2、コードギアス 反逆のルルーシュR2、Code Geass: Lelouch of the Rebellion R2、叛逆的勒路什R2"
+tags: [叛逆的鲁鲁修,SUNRISE,原创,TV,反逆のルルーシュ,还是死妹控,妹控,2008,codegeass,谷口悟朗]
 观看状态: 看过
 作品大类: Anime
 中文名: "Code Geass 反叛的鲁路修R2"
 日文名: "コードギアス 反逆のルルーシュR2"
-封面: "http://lain.bgm.tv/pic/cover/l/c9/f0/8_wK0z3.jpg"
-开播日期: "2008年4月6日"
-开播年份: " 2008"
-开播月份: " 4"
+封面: "https://lain.bgm.tv/pic/cover/l/c9/f0/8_wK0z3.jpg"
+开播日期: "2008-04-06"
+开播年份: " 2008-04-06"
+开播月份: "  "
 Bangumi评分: " 8.3"
 集数: "25"
 具体类型: "TV"
 动画公司: "サンライズ"
-bangumi_hash: "-2090958779"
+bangumi_hash: "2142752344"
 ---
 
 > [!bookinfo|noicon]+ **Code Geass 反叛的鲁路修R2** 
-> ![bookcover|400](http://lain.bgm.tv/pic/cover/l/c9/f0/8_wK0z3.jpg)
+> ![bookcover|400](https://lain.bgm.tv/pic/cover/l/c9/f0/8_wK0z3.jpg)
 >
 | 日文名 | コードギアス 反逆のルルーシュR2 |
 |:------: |:------------------------------------------: |
 | 分类 | TV
-| 新番 | 2008 年 4 月 | 
+| 新番 | 2008-04-06 年   月 | 
 | 集数 | TV 共25话 |
-| 官网 | [geass.jp/r2/](geass.jp/r2/)    |
+| 官网 | [http://www.geass.jp/r2/](http://www.geass.jp/r2/)    |
 | 制作 | サンライズ |
 | 导演 | 谷口悟朗 |
-| 脚本 | 大河内一楼 |
+| 脚本 | 未知 |
 | 字幕 | 看过   |
 | 状态 | 看过 |
 | 评分 |  |
@@ -42,42 +42,42 @@ bangumi_hash: "-2090958779"
 > [!tip]+ **章节列表**
 
  无OP/ED信息
-- [x] 第1话 魔神 が 目覚める 日 / 魔王的苏醒之日
-- [x] 第2话 日本独立計画 / 日本独立计划
-- [x] 第3话 囚われの学園 / 被囚禁的学园
-- [x] 第4话 逆襲の処刑台 / 逆行的处刑台
-- [x] 第5话 ナイト オブ ラウンズ / 圆桌骑士
-- [x] 第6话 太平洋 奇襲 作戦 / 太平洋奇袭作战
-- [ ] 第7话 棄てられた 仮面 / 被丢弃的面具
-- [ ] 第8话 百万のキセキ / 百万的奇迹
-- [ ] 第9话 朱禁城の花嫁 / 朱禁城的花嫁
-- [ ] 第10话 神虎輝く刻 / 神虎闪耀之刻
-- [ ] 第11话 想いの力 / 思念的力量
-- [ ] 第12话 ラブ アタック! / 爱的初体验
-- [ ] 第13话 過去からの刺客 / 来自过去的刺客
-- [x] 第14话 ギアス 狩り / Geass 狩猎
-- [ ] 第15话 C の 世界 / C的世界
-- [ ] 第16话 超合集国決議第壱號 / 超合众国决议第一号
-- [ ] 第17话 土の味 / 土之气味
-- [ ] 第18话 第二次 東京 決戦 / 第二次东京决战
-- [ ] 第19话 裏切り / 背叛
-- [ ] 第20话 皇帝 失格 / 皇帝 失格
-- [ ] 第21话 ラグナレク の 接続 / 诸神 黄昏 连接
-- [ ] 第22话 皇帝　ルルーシュ / 皇帝 鲁路修
-- [ ] 第23话 シュナイゼル　の　仮面 / 修耐泽尔的假面
-- [ ] 第24话 ダモクレスの空 / 达摩克里斯的天空
-- [ ] 第25话 Re; / Re;
+- [x] 第1话 魔神 が 目覚める 日 魔王的苏醒之日
+- [x] 第2话 日本独立計画 日本独立计划
+- [x] 第3话 囚われの学園 被囚禁的学园
+- [x] 第4话 逆襲の処刑台 逆行的处刑台
+- [x] 第5话 ナイト オブ ラウンズ 圆桌骑士
+- [x] 第6话 太平洋 奇襲 作戦 太平洋奇袭作战
+- [ ] 第7话 棄てられた 仮面 被丢弃的面具
+- [ ] 第8话 百万のキセキ 百万的奇迹
+- [ ] 第9话 朱禁城の花嫁 朱禁城的花嫁
+- [ ] 第10话 神虎輝く刻 神虎闪耀之刻
+- [ ] 第11话 想いの力 思念的力量
+- [ ] 第12话 ラブ アタック! 爱的初体验
+- [ ] 第13话 過去からの刺客 来自过去的刺客
+- [x] 第14话 ギアス 狩り Geass 狩猎
+- [ ] 第15话 C の 世界 C的世界
+- [ ] 第16话 超合集国決議第壱號 超合众国决议第一号
+- [ ] 第17话 土の味 土之气味
+- [ ] 第18话 第二次 東京 決戦 第二次东京决战
+- [ ] 第19话 裏切り 背叛
+- [ ] 第20话 皇帝 失格 皇帝 失格
+- [ ] 第21话 ラグナレク の 接続 诸神 黄昏 连接
+- [ ] 第22话 皇帝　ルルーシュ 皇帝 鲁路修
+- [ ] 第23话 シュナイゼル　の　仮面 修耐泽尔的假面
+- [ ] 第24话 ダモクレスの空 达摩克里斯的天空
+- [ ] 第25话 Re; Re;
 
 > [!tip]+ **主要角色**
 > 
-|  主角: 鲁路修·兰佩路基<br>ルルーシュ・ランペルージ | 主角: 枢木朱雀<br>枢木スザク   |   主角: C.C.<br>C.C.  |
+|  主角: ルルーシュ・ランペルージ | 主角: 枢木スザク   |   主角: C.C.  |
 |:------: |:----------------: | :--------------- : |
-|  CV: 大原さやか | CV: 櫻井孝宏   |   CV: ゆかな  |
-|  ![bookcover](https://lain.bgm.tv/pic/crt/m/7b/3a/1_crt_FEkJM.jpg) | ![bookcover](https://lain.bgm.tv/pic/crt/m/6f/40/2_crt_z1V9r.jpg)   |   ![bookcover](https://lain.bgm.tv/pic/crt/m/83/62/3_crt_028AD.jpg)  |
-| 主角: 红月华莲<br>紅月カレン  |  配角: 罗洛·兰佩路基<br>ロロ・ランペルージ  | 配角: 娜娜莉·兰佩路基<br>ナナリー・ランペルージ  |
+|  CV: 福山潤 | CV: 櫻井孝宏   |   CV: ゆかな  |
+|  ![bookcover](https://lain.bgm.tv/pic/crt/g/7b/3a/1_crt_FEkJM.jpg) | ![bookcover](https://lain.bgm.tv/pic/crt/g/6f/40/2_crt_z1V9r.jpg)   |   ![bookcover](https://lain.bgm.tv/pic/crt/g/83/62/3_crt_028AD.jpg)  |
+| 主角: 紅月カレン  |  配角: ロロ・ランペルージ  | 配角: ナナリー・ランペルージ  |
 |  CV: 小清水亜美 | CV: 水島大宙   |   CV: 名塚佳織  |
-| ![bookcover](https://lain.bgm.tv/pic/crt/m/33/79/2243_crt_ywc4e.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/m/b8/4e/3116_crt_HTxET.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/m/ba/22/3272_crt_oZKkr.jpg)  |
-| 配角: 夏莉·菲内特<br>シャーリー・フェネット  |  配角: 米蕾·阿什弗德<br>ミレイ・アッシュフォード  | 配角: 拉克夏塔·恰拉<br>ラクシャータ・チャウラー  |
+| ![bookcover](https://lain.bgm.tv/pic/crt/g/33/79/2243_crt_ywc4e.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/g/b8/4e/3116_crt_HTxET.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/g/ba/22/3272_crt_oZKkr.jpg)  |
+| 配角: シャーリー・フェネット  |  配角: ミレイ・アッシュフォード  | 配角: ラクシャータ・チャウラー  |
 |  CV: 折笠富美子 | CV: 大原さやか   |   CV: 倉田雅世  |
-| ![bookcover](https://lain.bgm.tv/pic/crt/m/1b/0e/3437_crt_0kdb1.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/m/0d/7c/3438_crt_b8S6S.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/m/6c/38/3441_crt_4hKFG.jpg)  |
+| ![bookcover](https://lain.bgm.tv/pic/crt/g/1b/0e/3437_crt_0kdb1.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/g/0d/7c/3438_crt_b8S6S.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/g/6c/38/3441_crt_4hKFG.jpg)  |
 

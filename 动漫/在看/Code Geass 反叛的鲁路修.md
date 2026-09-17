@@ -1,34 +1,34 @@
 ---
-笔记ID: "20260917172213"
-别名: "叛逆的鲁路修,Code Geass: Hangyaku no Lelouch,叛逆的勒鲁什,叛逆的鲁鲁修,コードギアス 反逆のルルーシュ,Code Geass: Lelouch of the Rebellion,叛逆的勒路什"
-tags: [机战,TV,日本,原创,战斗]
+笔记ID: "20260917181747"
+别名: "叛逆的鲁路修、Code Geass: Hangyaku no Lelouch、叛逆的勒鲁什、叛逆的鲁鲁修、コードギアス 反逆のルルーシュ、Code Geass: Lelouch of the Rebellion、叛逆的勒路什"
+tags: [鲁鲁修,SUNRISE,コードギアス反逆のルルーシュ,TV,福山润,原创,codegeass,2006,CC,妹控]
 观看状态: 在看
 作品大类: Anime
 中文名: "Code Geass 反叛的鲁路修"
 日文名: "コードギアス 反逆のルルーシュ"
-封面: "http://lain.bgm.tv/pic/cover/l/da/8c/793_3y432.jpg"
-开播日期: "2006年10月5日"
-开播年份: " 2006"
-开播月份: " 10"
+封面: "https://lain.bgm.tv/pic/cover/l/da/8c/793_3y432.jpg"
+开播日期: "2006-10-05"
+开播年份: " 2006-10-05"
+开播月份: "  "
 Bangumi评分: " 8.3"
 集数: "25"
 具体类型: "TV"
 动画公司: "サンライズ"
-bangumi_hash: "-442657448"
+bangumi_hash: "250835449"
 ---
 
 > [!bookinfo|noicon]+ **Code Geass 反叛的鲁路修** 
-> ![bookcover|400](http://lain.bgm.tv/pic/cover/l/da/8c/793_3y432.jpg)
+> ![bookcover|400](https://lain.bgm.tv/pic/cover/l/da/8c/793_3y432.jpg)
 >
 | 日文名 | コードギアス 反逆のルルーシュ |
 |:------: |:------------------------------------------: |
 | 分类 | TV
-| 新番 | 2006 年 10 月 | 
+| 新番 | 2006-10-05 年   月 | 
 | 集数 | TV 共25话 |
-| 官网 | [geass.jp/first](geass.jp/first)    |
+| 官网 | [http://www.geass.jp/first](http://www.geass.jp/first)    |
 | 制作 | サンライズ |
 | 导演 | 谷口悟朗 |
-| 脚本 | 吉野弘幸、野村祐一、大河内一楼 |
+| 脚本 | 未知 |
 | 字幕 | 在看   |
 | 状态 | 在看 |
 | 评分 |  |
@@ -40,44 +40,44 @@ bangumi_hash: "-442657448"
 
 > [!tip]+ **章节列表**
 
-- [x] 特别篇-8: 5 仮面の軌跡/ 假面的轨迹
-- [x] 特别篇-17: 5 仮面の真実/ 假面的真实
-- [ ] 第1话 魔神 が 生まれた 日 / 魔王诞生之日
-- [ ] 第2话 覚醒 の 白き 騎士 / 觉醒的白色骑士
-- [ ] 第3话 偽り の クラス メイト / 伪装的同班同学
-- [ ] 第4话 その 名 は ゼロ / 其名为zero
-- [ ] 第5话 皇女 と 魔女 / 皇女与魔女
-- [ ] 第6话 奪われた 仮面 / 被夺走的假面
-- [ ] 第7话 コーネリア を 撃て / 攻击柯内利亚
-- [ ] 第8话 黒 の 騎士団 / 黑色骑士团
-- [ ] 第9话 リ フ レ イ ン / 重温旧梦
-- [ ] 第10话 紅蓮 舞う / 红莲舞动
-- [ ] 第11话 ナリタ 攻防戦 / 成田攻防战
-- [ ] 第12话 キョウト から の 使者 / 从京都来的使者
-- [ ] 第13话 シャーリー と 銃口 / 夏莉的枪口
-- [ ] 第14话 ギアス 対 ギアス / Geass对Geass
-- [ ] 第15话 喝采 の マオ / 喝彩的毛
-- [ ] 第16话 囚われ の ナナリー / 被囚禁的娜娜莉
-- [ ] 第17话 騎 士 / 骑士
-- [ ] 第18话 枢木スザク に 命じる / 对枢木朱雀下令
-- [ ] 第19话 神 の 島 / 神之岛
-- [ ] 第20话 キュウシュウ 戦役 / 九州战役
-- [ ] 第21话 学 園 祭 宣 言 ! / 学园祭宣言 !
-- [ ] 第22话 血染め の ユフィ / 血染的尤菲
-- [ ] 第23话 せめて哀しみとともに / 至少，与悲伤相伴
-- [ ] 第24话 崩落 の ステージ / 崩落的舞台
-- [ ] 第25话 ゼ ロ / Zero
+- [x] 特别篇-0: 仮面の軌跡假面的轨迹
+- [x] 特别篇-0: 仮面の真実假面的真实
+- [ ] 第1话 魔神 が 生まれた 日 魔王诞生之日
+- [ ] 第2话 覚醒 の 白き 騎士 觉醒的白色骑士
+- [ ] 第3话 偽り の クラス メイト 伪装的同班同学
+- [ ] 第4话 その 名 は ゼロ 其名为zero
+- [ ] 第5话 皇女 と 魔女 皇女与魔女
+- [ ] 第6话 奪われた 仮面 被夺走的假面
+- [ ] 第7话 コーネリア を 撃て 攻击柯内利亚
+- [ ] 第8话 黒 の 騎士団 黑色骑士团
+- [ ] 第9话 リ フ レ イ ン 重温旧梦
+- [ ] 第10话 紅蓮 舞う 红莲舞动
+- [ ] 第11话 ナリタ 攻防戦 成田攻防战
+- [ ] 第12话 キョウト から の 使者 从京都来的使者
+- [ ] 第13话 シャーリー と 銃口 夏莉的枪口
+- [ ] 第14话 ギアス 対 ギアス Geass对Geass
+- [ ] 第15话 喝采 の マオ 喝彩的毛
+- [ ] 第16话 囚われ の ナナリー 被囚禁的娜娜莉
+- [ ] 第17话 騎 士 骑士
+- [ ] 第18话 枢木スザク に 命じる 对枢木朱雀下令
+- [ ] 第19话 神 の 島 神之岛
+- [ ] 第20话 キュウシュウ 戦役 九州战役
+- [ ] 第21话 学 園 祭 宣 言 ! 学园祭宣言 !
+- [ ] 第22话 血染め の ユフィ 血染的尤菲
+- [ ] 第23话 せめて哀しみとともに 至少，与悲伤相伴
+- [ ] 第24话 崩落 の ステージ 崩落的舞台
+- [ ] 第25话 ゼ ロ Zero
 
 > [!tip]+ **主要角色**
 > 
-|  主角: 鲁路修·兰佩路基<br>ルルーシュ・ランペルージ | 主角: 枢木朱雀<br>枢木スザク   |   主角: C.C.<br>C.C.  |
+|  主角: ルルーシュ・ランペルージ | 主角: 枢木スザク   |   主角: C.C.  |
 |:------: |:----------------: | :--------------- : |
-|  CV: 大原さやか | CV: 櫻井孝宏   |   CV: ゆかな  |
-|  ![bookcover](https://lain.bgm.tv/pic/crt/m/7b/3a/1_crt_FEkJM.jpg) | ![bookcover](https://lain.bgm.tv/pic/crt/m/6f/40/2_crt_z1V9r.jpg)   |   ![bookcover](https://lain.bgm.tv/pic/crt/m/83/62/3_crt_028AD.jpg)  |
-| 主角: 红月华莲<br>紅月カレン  |  配角: 娜娜莉·兰佩路基<br>ナナリー・ランペルージ  | 配角: 夏莉·菲内特<br>シャーリー・フェネット  |
+|  CV: 福山潤 | CV: 櫻井孝宏   |   CV: ゆかな  |
+|  ![bookcover](https://lain.bgm.tv/pic/crt/g/7b/3a/1_crt_FEkJM.jpg) | ![bookcover](https://lain.bgm.tv/pic/crt/g/6f/40/2_crt_z1V9r.jpg)   |   ![bookcover](https://lain.bgm.tv/pic/crt/g/83/62/3_crt_028AD.jpg)  |
+| 主角: 紅月カレン  |  配角: ナナリー・ランペルージ  | 配角: シャーリー・フェネット  |
 |  CV: 小清水亜美 | CV: 名塚佳織   |   CV: 折笠富美子  |
-| ![bookcover](https://lain.bgm.tv/pic/crt/m/33/79/2243_crt_ywc4e.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/m/ba/22/3272_crt_oZKkr.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/m/1b/0e/3437_crt_0kdb1.jpg)  |
-| 配角: 米蕾·阿什弗德<br>ミレイ・アッシュフォード  |  配角: 拉克夏塔·恰拉<br>ラクシャータ・チャウラー  | 配角: 克洛维斯·La·布里塔尼亚<br>クロヴィス・ラ・ブリタニア  |
+| ![bookcover](https://lain.bgm.tv/pic/crt/g/33/79/2243_crt_ywc4e.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/g/ba/22/3272_crt_oZKkr.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/g/1b/0e/3437_crt_0kdb1.jpg)  |
+| 配角: ミレイ・アッシュフォード  |  配角: ラクシャータ・チャウラー  | 配角: クロヴィス・ラ・ブリタニア  |
 |  CV: 大原さやか | CV: 倉田雅世   |   CV: 飛田展男  |
-| ![bookcover](https://lain.bgm.tv/pic/crt/m/0d/7c/3438_crt_b8S6S.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/m/6c/38/3441_crt_4hKFG.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/m/82/ff/3443_crt_44TF0.jpg)  |
+| ![bookcover](https://lain.bgm.tv/pic/crt/g/0d/7c/3438_crt_b8S6S.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/g/6c/38/3441_crt_4hKFG.jpg)  | ![bookcover](https://lain.bgm.tv/pic/crt/g/82/ff/3443_crt_44TF0.jpg)  |
 

@@ -5,6 +5,7 @@
 //特别鸣谢：@ 鬼头明里单推人 及热心观众
 // 感谢 @北漠海 的优化思路及部分代码~
 //modify: 莺空_栩白（解决章节目录部分展示不全问题、动画导演概率不展示问题）
+//modify: AI (完善targetPath注入，解决QuickAdd空路径段报错，优化400错误处理)
 // ===== 已实现功能 =====
 // 认证
 //   - 支持 Access Token（优先）与 Cookie（兜底）双认证
@@ -2588,7 +2589,12 @@ async function fetchWatchedEpisodes(subjectId) {
                 `?limit=${limit}&offset=${offset}`;
 
             const data = await requestGetJson(url);
-            if (!data) { log(`获取已看剧集失败：API 无响应 subject=${subjectId}`); break; }
+            if (!data) { 
+                log(`获取已看剧集失败：API 无响应或返回异常 subject=${subjectId}`);
+                // 如果返回 400，通常是因为没有登录 Token 或者 Token 过期，这里不抛出错误，直接返回空集合
+                // 让后续流程继续执行，只是无法自动勾选已看剧集
+                break; 
+            }
             if (!Array.isArray(data.data)) { log(`获取已看剧集失败：返回结构异常 subject=${subjectId}`); break; }
 
             for (const item of data.data) {
@@ -3210,6 +3216,10 @@ async function bangumiBatch(QuickAddInstance) {
                         TARGET_FOLDER ? `${TARGET_FOLDER}/${Info.fileName}.md` : `${Info.fileName}.md`
                     );
 
+                    // 【修复核心】将路径变量注入 Info，供 QuickAdd 模板使用
+                    Info.folder = TARGET_FOLDER || "";
+                    Info.targetPath = targetPath;
+
                     prepared[index] = {
                         item, Info, hash, targetPath, action, displayName,
                     };
@@ -3533,6 +3543,10 @@ async function bangumi(QuickAddInstance) {
     Info.tags = await QuickAdd.quickAddApi.checkboxPrompt(Info.tagsArray, Info.tagsRecommendArray) || [];
     Info.score = DEFAULT_SCORE_IF_EMPTY;
     Info.url = choice.link || " ";
+    
+    // 【修复核心】单条导入同样注入路径变量，防止模板报错
+    Info.folder = "";
+    Info.targetPath = `${Info.fileName}.md`;
 
     const TemplateName = `Bangumi${sourceName}`;
     await QuickAdd.quickAddApi.executeChoice(TemplateName, Info);
@@ -3605,60 +3619,169 @@ async function searchBangumi(url) {
     return itemList.length > 1 ? itemList : null;
 }
 
+/**
+ * 从 Bangumi API 返回的 infobox 数组里取值
+ * API 结构：[{ key, value: string | [{k,v}] }]
+ */
+function getApiInfoboxValue(infobox, key) {
+    if (!Array.isArray(infobox)) return "未知";
+    for (const item of infobox) {
+        if (!item || item.key !== key) continue;
+        const v = item.value;
+        if (typeof v === "string") {
+            const s = v.trim();
+            return s || "未知";
+        }
+        if (Array.isArray(v)) {
+            const parts = v.map(x => {
+                if (x == null) return "";
+                if (typeof x === "string") return x;
+                if (x.v != null) return String(x.v);
+                return "";
+            }).filter(Boolean);
+            return parts.join("、") || "未知";
+        }
+    }
+    return "未知";
+}
+
+/**
+ * 单集 → Markdown 任务行
+ */
+function buildEpisodeLine(ep, typeName, isMain, watchedSet) {
+    const epId = ep && ep.id != null ? String(ep.id) : "";
+    const epNum = ep && (ep.ep != null ? ep.ep : ep.sort);
+    const epNumStr = epNum != null ? String(epNum) : "";
+    const sortStr = ep && ep.sort != null ? String(ep.sort) : "";
+    const jpTitle = (ep && ep.name) || "";
+    const cnTitle = (ep && ep.name_cn) || "";
+
+    let alreadyView = false;
+    if (watchedSet && watchedSet.size > 0) {
+        if (epId && watchedSet.has(epId)) alreadyView = true;
+        else if (epNumStr && watchedSet.has(epNumStr)) alreadyView = true;
+        else if (sortStr && watchedSet.has(sortStr)) alreadyView = true;
+    }
+
+    let full = alreadyView ? `- [x] ` : `- [ ] `;
+    if (isMain) {
+        full += `第${epNumStr}话 ${jpTitle} ${cnTitle}`.trim();
+    } else {
+        full += `${typeName}-${epNumStr}: ${jpTitle}${cnTitle}`.trim();
+    }
+    return full;
+}
+
+/**
+ * 获取动画信息（走 Bangumi v0 API）
+ * @param {string} url - 兼容旧签名，形如 https://bgm.tv/subject/{id}
+ * @param {object} [options={}]
+ * @param {Set<string>} [options.watchedSet] - 已看剧集标识集合
+ * @returns {Promise<object>} 动画信息对象（结构保持与 HTML 版一致）
+ */
 async function getAnimeByurl(url, options = {}) {
-    console.log("URL:" + url);
-    const page = await requestGet(url);
-    if (!page) { notice("No results found."); throw new Error("No results found."); }
+    let subjectId = options.subjectId;
+    if (!subjectId) {
+        const m = String(url).match(/subject\/(\d+)/);
+        if (!m) {
+            new Notice("无法从 URL 解析 subject_id");
+            throw new Error("Invalid subject URL");
+        }
+        subjectId = m[1];
+    }
 
-    const doc = parseHtmlToDom(page);
-    const $ = (s) => doc.querySelector(s);
-    const $$ = (s) => doc.querySelectorAll(s);
+    const epApiBase = `https://api.bgm.tv/v0/episodes?subject_id=${subjectId}&limit=100`;
 
-    const Type = $("#headerSubject")?.getAttribute('typeof');
-    if (!["v:Movie", "v:Video"].includes(Type)) {
+    // ★ 全部请求并行发出
+    const [
+        subject,
+        characters,
+        epMain,
+        epSP,
+        epOP,
+        epED,
+        epPV,
+        epMAD,
+        epOther,
+    ] = await Promise.all([
+        requestGetJson(`https://api.bgm.tv/v0/subjects/${subjectId}`),
+        requestGetJson(`https://api.bgm.tv/v0/subjects/${subjectId}/characters`),
+        requestGetJson(`${epApiBase}&type=0`),
+        requestGetJson(`${epApiBase}&type=1`),
+        requestGetJson(`${epApiBase}&type=2`),
+        requestGetJson(`${epApiBase}&type=3`),
+        requestGetJson(`${epApiBase}&type=4`),
+        requestGetJson(`${epApiBase}&type=5`),
+        requestGetJson(`${epApiBase}&type=6`),
+    ]);
+
+    if (!subject) {
+        new Notice("无法获取作品信息");
+        throw new Error("Subject API returned null");
+    }
+
+    // SubjectType：1=书籍 2=动画 3=音乐 4=游戏 6=三次元
+    if (subject.type !== 2) {
         new Notice("您输入的作品不是动画！");
         throw new Error("Not An Anime Information Input");
     }
 
-    const workinginfo = extractBaseInfo(doc, "anime");
+    // ---- 基础字段（【修复核心】增加正则过滤，防止文件名包含 / 等非法字符） ----
+    const regex = /[\*"\\\/<>:\|?]/g;
+    const CN = (subject.name_cn || "").replace(regex, ' ').trim() || " ";
+    const JP = (subject.name || "").replace(regex, ' ').trim() || " ";
+    const fileName = `${CN}_${JP}`.trim() || "未知作品";
+    const type = (subject.platform || " ").trim() || " ";
+    const rating = (subject.rating && subject.rating.score != null)
+        ? String(subject.rating.score)
+        : "未知";
+    const Poster =
+        (subject.images && (subject.images.large || subject.images.common || subject.images.medium))
+        || "https://via.placeholder.com/300x450?text=无封面";
+    let summary = subject.summary || "暂无简介";
+    summary = summary.trim() || "暂无简介";
 
-    if (options.apiName) workinginfo.JP = options.apiName;
-    if (options.apiNameCn) workinginfo.CN = options.apiNameCn;
-    workinginfo.name = workinginfo.JP || " ";
-    workinginfo.name_cn = workinginfo.CN || " ";
-    workinginfo.fileName = `${workinginfo.CN}_${workinginfo.JP}`.trim() || "未知作品";
+    // ---- 标签 ----
+    const tagsArray = Array.isArray(subject.tags)
+        ? subject.tags.map(t => t && t.name).filter(Boolean)
+        : [];
+    const tagsRecommendArray = tagsArray.slice(0, 10);
 
-    const strTmp = Array.from($$("#infobox > li")).map(li => li.innerText.trim()).join("\n");
-    const authorMatchTmp = /导演:\s*([^\n]*)/.exec(strTmp) || /作者:\s*([^\n]*)/.exec(strTmp) || /原作:\s*([^\n]*)/.exec(strTmp);
-    const director = authorMatchTmp ? authorMatchTmp[1].trim().replace(/\n|\r/g, "").replace(/\ +/g, "") : "未知";
+    // ---- infobox ----
+    const infobox = Array.isArray(subject.infobox) ? subject.infobox : [];
+    const alias = getApiInfoboxValue(infobox, "别名");
+    const episodeFromInfobox = getApiInfoboxValue(infobox, "话数");
+    const episode = (subject.eps != null && subject.eps > 0)
+        ? String(subject.eps)
+        : (episodeFromInfobox !== "未知" ? episodeFromInfobox : "0");
 
-    const infoboxRules = {
-        episode: /话数:\s*(\d*)/g,
-        website: /官方网站:\s*(.*?)(?=\n|$)/gm,
-        staff: /脚本:\s*([^\n]*)/,
-        AudioDirector: /音响监督:\s*([^\n]*)/,
-        ArtDirector: /美术监督:\s*([^\n]*)/,
-        AnimeChief: /总作画监督:\s*([^\n]*)/,
-        MusicMake: /音乐制作:\s*([^\n]*)/,
-        AnimeMake: /动画制作:\s*([^\n]*)/,
-        from: /原作:\s*([^\n]*)/,
-    };
-    const infoboxFields = extractInfoboxFields(doc, infoboxRules);
+    const website = getApiInfoboxValue(infobox, "官方网站");
+    const staff = getApiInfoboxValue(infobox, "脚本");
+    const AudioDirector = getApiInfoboxValue(infobox, "音响监督");
+    const ArtDirector = getApiInfoboxValue(infobox, "美术监督");
+    const AnimeChief = getApiInfoboxValue(infobox, "总作画监督");
+    const MusicMake = getApiInfoboxValue(infobox, "音乐制作");
+    const AnimeMake = (() => {
+        const a = getApiInfoboxValue(infobox, "动画制作");
+        if (a !== "未知") return a;
+        return getApiInfoboxValue(infobox, "制作");
+    })();
+    const from = getApiInfoboxValue(infobox, "原作");
 
-    const str = Array.from($$("#infobox > li")).map(li => li.innerText.trim()).join("\n");
-    const dateRegMap = {
-        "TV": /放送开始:\s*([^\n]*)/,
-        "OVA": /发售日:\s*([^\n]*)/,
-        "剧场版": /上映年度:\s*([^\n]*)/,
-        "OAD": /发售日:\s*([^\n]*)/,
-        "WEB": /放送开始:\s*([^\n]*)/,
-        "web": /放送开始:\s*([^\n]*)/,
-    };
-    const regstartdate = dateRegMap[workinginfo.type] || /放送开始:\s*([^\n]*)/;
-    const startdateMatch = regstartdate.exec(str);
-    const startdate = startdateMatch ? startdateMatch[1].trim().replace(/\n|\r/g, "").replace(/\ +/g, "") : "未知";
+    // 导演：依次尝试 导演 / 作者 / 原作
+    let director = getApiInfoboxValue(infobox, "导演");
+    if (director === "未知") director = getApiInfoboxValue(infobox, "作者");
+    if (director === "未知") director = getApiInfoboxValue(infobox, "原作");
 
-    let season = "未知季度"; let seasonYear;
+    // ---- 日期 / 季节 ----
+    let startdate = subject.date || "";
+    if (!startdate) startdate = getApiInfoboxValue(infobox, "放送开始");
+    if (startdate === "未知") startdate = "";
+    if (!startdate) startdate = getApiInfoboxValue(infobox, "发售日");
+    if (startdate === "未知") startdate = "未知";
+
+    let season = "未知季度";
+    let seasonYear;
     if (startdate && startdate.includes("年")) {
         const year = startdate.split("年")[0];
         const monthPart = startdate.split("年")[1];
@@ -3673,24 +3796,90 @@ async function getAnimeByurl(url, options = {}) {
         }
     }
 
-    const detailUrl = url + "/ep";
-    const contentLists = await getParagraph(detailUrl, options.watchedSet || null);
+    // ---- 剧集：本篇 / 其他 ----
+    const watchedSet = options.watchedSet || null;
+    const paraList = [];
+    const opedList = [];
 
-    const paraList = contentLists.paraList;
-    const opedList = contentLists.opedList;
-    const characterInfo = parseCharacterList(doc, "anime");
+    if (epMain && Array.isArray(epMain.data)) {
+        const sorted = [...epMain.data].sort((a, b) => (a.sort || 0) - (b.sort || 0));
+        for (const ep of sorted) {
+            paraList.push(buildEpisodeLine(ep, "本篇", true, watchedSet));
+        }
+    }
 
+    const otherTypes = [
+        { data: epSP,   name: "特别篇" },
+        { data: epOP,   name: "OP" },
+        { data: epED,   name: "ED" },
+        { data: epPV,   name: "预告/宣传/广告" },
+        { data: epMAD,  name: "MAD" },
+        { data: epOther,name: "其他" },
+    ];
+    for (const { data, name } of otherTypes) {
+        if (!data || !Array.isArray(data.data)) continue;
+        const sorted = [...data.data].sort((a, b) => (a.sort || 0) - (b.sort || 0));
+        for (const ep of sorted) {
+            opedList.push(buildEpisodeLine(ep, name, false, watchedSet));
+        }
+    }
+
+    // ---- 角色 ----
+    const characterList = [];
+    if (Array.isArray(characters)) {
+        for (const ch of characters) {
+            const relation = (ch && ch.relation) || "--";
+            const name = (ch && ch.name) || "暂无角色";
+            const actor = (ch && Array.isArray(ch.actors) && ch.actors.length > 0)
+                ? (ch.actors[0].name || "暂无CV")
+                : "暂无CV";
+            const photo = (ch && ch.images && (ch.images.grid || ch.images.small || ch.images.medium || ch.images.large)) || "";
+
+            characterList.push(`${relation}: ${name}`);
+            characterList.push(`CV: ${actor}`);
+            characterList.push(photo ? `![bookcover](${photo})` : "");
+        }
+    }
+
+    const characterInfo = { characterList: characterList.join("\n") || " " };
+    for (let i = 0; i < 9; i++) {
+        const baseIndex = i * 3;
+        characterInfo[`character${i + 1}`] = characterList[baseIndex] || " ";
+        characterInfo[`characterCV${i + 1}`] = characterList[baseIndex + 1] || " ";
+        characterInfo[`characterPhoto${i + 1}`] = characterList[baseIndex + 2] || " ";
+    }
+
+    // ---- 组装 ----
     const finalInfo = {
-        ...workinginfo,
-        ...infoboxFields,
-        director: director || "未知",
+        CN,
+        JP,
+        name: JP,
+        name_cn: CN,
+        fileName,
+        type,
+        rating,
+        Poster,
+        summary,
+        tagsArray,
+        tagsRecommendArray,
+        alias,
+        episode,
+        website,
+        staff,
+        AudioDirector,
+        ArtDirector,
+        AnimeChief,
+        MusicMake,
+        AnimeMake,
+        from,
+        director,
         date: startdate || " ",
         year: startdate.split("年")[0] || " ",
         month: startdate.split("年")[1]?.split("月")[0] || " ",
-        seasonYear: seasonYear,
-        season: season,
-        fromWho: infoboxFields.from.split("(")[0]?.split("・")[0]?.trim() || " ",
-        fromWhere: infoboxFields.from.split("（")[1]?.replace("）", "")?.trim() || " ",
+        seasonYear,
+        season,
+        fromWho: (from || "").split("(")[0]?.split("・")[0]?.trim() || " ",
+        fromWhere: (from || "").split("（")[1]?.replace("）", "")?.trim() || " ",
         paraList: paraList.join("\n") || " 无章节信息",
         OpEd: opedList.join("\n") || " 无OP/ED信息",
         ...characterInfo
@@ -3701,6 +3890,7 @@ async function getAnimeByurl(url, options = {}) {
             finalInfo[key] = " ";
         }
     }
+
     return finalInfo;
 }
 

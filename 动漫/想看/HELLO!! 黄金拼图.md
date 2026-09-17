@@ -1,34 +1,34 @@
 ---
-笔记ID: "20260917172017"
-别名: "黄金拼图 第二季,きんモザ 2期,黄金拼图 2期"
-tags: [百合,TV,日本,漫画改,日常]
+笔记ID: "20260917181747"
+别名: "黄金拼图 第二季、きんモザ 2期、黄金拼图 2期"
+tags: [百合,芳文社,2015年4月,漫画改,Studio五组,日常,治愈,TV,萌,黄金拼图]
 观看状态: 想看
 作品大类: Anime
 中文名: "HELLO!! 黄金拼图"
 日文名: "ハロー!!きんいろモザイク"
-封面: "http://lain.bgm.tv/pic/cover/l/45/f9/100405_JrNQA.jpg"
-开播日期: "2015年4月5日"
-开播年份: " 2015"
-开播月份: " 4"
+封面: "https://lain.bgm.tv/pic/cover/l/45/f9/100405_JrNQA.jpg"
+开播日期: "2015-04-05"
+开播年份: " 2015-04-05"
+开播月份: "  "
 Bangumi评分: " 7.3"
 集数: "12"
 具体类型: "TV"
-动画公司: "Studio五組"
-bangumi_hash: "-740692066"
+动画公司: "未知"
+bangumi_hash: "1461524386"
 ---
 
 > [!bookinfo|noicon]+ **HELLO!! 黄金拼图** 
-> ![bookcover|400](http://lain.bgm.tv/pic/cover/l/45/f9/100405_JrNQA.jpg)
+> ![bookcover|400](https://lain.bgm.tv/pic/cover/l/45/f9/100405_JrNQA.jpg)
 >
 | 日文名 | ハロー!!きんいろモザイク |
 |:------: |:------------------------------------------: |
 | 分类 | TV
-| 新番 | 2015 年 4 月 | 
+| 新番 | 2015-04-05 年   月 | 
 | 集数 | TV 共12话 |
-| 官网 | [kinmosa.com/](kinmosa.com/)    |
-| 制作 | Studio五組 |
+| 官网 | [http://www.kinmosa.com/](http://www.kinmosa.com/)    |
+| 制作 | 未知 |
 | 导演 | 天衝 |
-| 脚本 | 浦畑達彦、綾奈ゆにこ、髙橋龍也、関根アユミ、伊神貴世 |
+| 脚本 | 未知 |
 | 字幕 | 想看   |
 | 状态 | 想看 |
 | 评分 |  |
@@ -40,29 +40,29 @@ bangumi_hash: "-740692066"
 > [!tip]+ **章节列表**
 
  无OP/ED信息
-- [ ] 第1话 はるがきたっ / 春天来了
-- [ ] 第2话 プレゼンド・フォー・ユー / 给你的礼物
-- [ ] 第3话 あなたがとってもまぶしくて / 你多么耀眼
-- [ ] 第4话 雨にもまけず / 不畏风雨
-- [ ] 第5话 おねえちゃんとあそぼう / 跟姐姐一起玩耍
-- [ ] 第6话 きになるあの子 / 好在意那孩子
-- [ ] 第7话 マイ・ディア・ヒーロー / My Dear Hero
-- [ ] 第8话 もうすぐ夏休み / 暑假就要来了
-- [ ] 第9话 とっておきの一日 / 特别的一天
-- [ ] 第10话 海べのやくそく / 海边的约定
-- [ ] 第11话 ほんのすこしの長いよる / 有点漫长的一夜
-- [ ] 第12话 なによりとびきり好きだから / 因为喜欢你胜于一切
+- [ ] 第1话 はるがきたっ 春天来了
+- [ ] 第2话 プレゼンド・フォー・ユー 给你的礼物
+- [ ] 第3话 あなたがとってもまぶしくて 你多么耀眼
+- [ ] 第4话 雨にもまけず 不畏风雨
+- [ ] 第5话 おねえちゃんとあそぼう 跟姐姐一起玩耍
+- [ ] 第6话 きになるあの子 好在意那孩子
+- [ ] 第7话 マイ・ディア・ヒーロー My Dear Hero
+- [ ] 第8话 もうすぐ夏休み 暑假就要来了
+- [ ] 第9话 とっておきの一日 特别的一天
+- [ ] 第10话 海べのやくそく 海边的约定
+- [ ] 第11话 ほんのすこしの長いよる 有点漫长的一夜
+- [ ] 第12话 なによりとびきり好きだから 因为喜欢你胜于一切
 
 > [!tip]+ **主要角色**
 > 
-|  主角: 大宫忍<br>大宮忍 | 主角: 爱丽丝·卡塔雷特<br>アリス・カータレット   |   主角: 小路绫<br>小路綾  |
+|  闲角: モブキャラクター | 主角: 大宮忍   |   主角: アリス・カータレット  |
 |:------: |:----------------: | :--------------- : |
-|  CV: 西明日香 | CV: 田中真奈美   |   CV: 種田梨沙  |
-|  ![bookcover](https://lain.bgm.tv/pic/crt/m/c9/ec/20480_crt_zJVKb.jpg?r=1428346169) | ![bookcover](https://lain.bgm.tv/pic/crt/m/3c/9d/20481_crt_Zyvha.jpg?r=1428972968)   |   ![bookcover](https://lain.bgm.tv/pic/crt/m/e8/ad/20482_crt_CC1gr.jpg?r=1431395830)  |
-| 主角: 猪熊阳子<br>猪熊陽子  |  主角: 九条可怜<br>九条カレン  | 配角: 松原穗乃花<br>松原穂乃花  |
-|  CV: 内山夕実 | CV: 東山奈央   |   CV: 諏訪彩花  |
-| ![bookcover](https://lain.bgm.tv/pic/crt/m/21/df/20483_crt_bHJVp.jpg?r=1430356121)  |  ![bookcover](https://lain.bgm.tv/pic/crt/m/90/1d/20484_crt_BrU2k.jpg?r=1429642378)  | ![bookcover](https://lain.bgm.tv/pic/crt/m/8b/22/29808_crt_Bj7ad.jpg?r=1431396091)  |
-| 配角: 猪熊空太<br>猪熊空太  |  配角: 猪熊美月<br>猪熊美月  | 配角: 忍的妈妈<br>忍の母  |
-|  CV: 潘めぐみ | CV: 村川梨衣   |   CV: 高橋美佳子  |
-| ![bookcover](https://lain.bgm.tv/pic/crt/m/03/7a/29809_crt_Q6xnM.jpg)  |  ![bookcover](https://lain.bgm.tv/pic/crt/m/63/c5/29810_crt_JE578.jpg?r=1424688701)  | ![bookcover](https://lain.bgm.tv/pic/crt/m/1c/d9/33532_crt_S2KIo.jpg)  |
+|  CV: 藤井ゆきよ | CV: 西明日香   |   CV: 田中真奈美  |
+|  ![bookcover](https://lain.bgm.tv/pic/crt/g/1d/85/17529_crt_0dRZE.jpg) | ![bookcover](https://lain.bgm.tv/pic/crt/g/c9/ec/20480_crt_zJVKb.jpg?r=1428346169)   |   ![bookcover](https://lain.bgm.tv/pic/crt/g/3c/9d/20481_crt_Zyvha.jpg?r=1428972968)  |
+| 主角: 小路綾  |  主角: 猪熊陽子  | 主角: 九条カレン  |
+|  CV: 種田梨沙 | CV: 内山夕実   |   CV: 東山奈央  |
+| ![bookcover](https://lain.bgm.tv/pic/crt/g/e8/ad/20482_crt_CC1gr.jpg?r=1431395830)  |  ![bookcover](https://lain.bgm.tv/pic/crt/g/21/df/20483_crt_bHJVp.jpg?r=1430356121)  | ![bookcover](https://lain.bgm.tv/pic/crt/g/90/1d/20484_crt_BrU2k.jpg?r=1429642378)  |
+| 配角: 大宮勇  |  配角: 烏丸さくら  | 配角: アリスのママ  |
+|  CV: 田村ゆかり | CV: 佐藤聡美   |   CV: 大原さやか  |
+| ![bookcover](https://lain.bgm.tv/pic/crt/g/e9/5f/20485_crt_n0706.jpg?r=1433292801)  |  ![bookcover](https://lain.bgm.tv/pic/crt/g/b8/ac/20486_crt_YM35e.jpg?r=1432939837)  | ![bookcover](https://lain.bgm.tv/pic/crt/g/d7/38/20665_crt_cZT33.jpg)  |
 
