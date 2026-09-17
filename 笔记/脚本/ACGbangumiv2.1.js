@@ -10,13 +10,14 @@
 //modify: 优先使用 Bangumi 个人访问令牌（Access Token）认证，令牌无效/未配置时回退 Cookie 流程
 //modify: 新增批量模式（bangumiBatch）——按收藏状态一次性拉取动画并批量生成笔记
 //modify: 批量模式支持中断按钮；批量模式不再弹 score 输入框，改用 Bangumi 已有评分或默认值
-//modify: 批量模式通过 API 精确获取用户已看剧集（GET /v0/users/{u}/collections/{id}/episodes）
-//modify: HTML 页面请求只走 Cookie，API 请求只走 Token（修复 400）
-//modify: Token 认证成功后保留 Cookie，使 HTML 页面请求亦可用作兜底
+//modify: HTML 页面请求只走 Cookie，API 请求只走 Token
 //modify: getParagraph 双分支：优先 API 已看集合，无则回退 HTML <small>
-//modify: ★ 纯 DOM 凭据弹窗（不依赖 obsidian 模块，兼容 QuickAdd 沙箱）
-//modify: ★ 普通和批量导入前静默校验，两项都通过不弹窗；任一失败才弹窗
-//modify: ★ 右上角 Notice 显示校验结果
+//modify: ★ 纯 DOM 凭据弹窗（不依赖 obsidian 模块）
+//modify: ★ 普通和批量导入前静默校验，两项都通过不弹窗
+//modify: ★ fetchWatchedEpisodes 路径改为 /v0/users/-/collections/{subject_id}/episodes
+//modify: ★ requestGet 合并 COMMON_HEADERS 与 customHeaders，避免丢失 User-Agent
+//modify: ★ API GET 请求显式移除 Content-Type
+//modify: ★【本次新增】BangumiMultiSelectDialog 勾选弹窗，批量导入前可选择生成哪些动画
 
 // ========== 存储键名 ==========
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
@@ -76,6 +77,8 @@ let USER_NAME = "";
 let BATCH_ABORT = false;
 const ABORT_BTN_ID = "bangumi-batch-abort-btn";
 const CRED_DIALOG_ID = "bangumi-credentials-dialog";
+const CONFIRM_DIALOG_ID = "bangumi-confirm-dialog";
+const MULTISELECT_DIALOG_ID = "bangumi-multiselect-dialog";
 
 const notice = (msg) => new Notice(msg, 5000);
 const log = (msg) => console.log(msg);
@@ -112,10 +115,13 @@ let pageNum = 1;
 async function requestGet(url, customHeaders = null) {
     try {
         const finalURL = new URL(url);
-        const headers = customHeaders ? { ...customHeaders } : { ...COMMON_HEADERS };
+        const headers = customHeaders
+            ? { ...COMMON_HEADERS, ...customHeaders }
+            : { ...COMMON_HEADERS };
         const isApiRequest = finalURL.hostname === 'api.bgm.tv';
 
         if (isApiRequest) {
+            delete headers['Content-Type'];
             if (USER_TOKEN && USER_TOKEN.trim()) {
                 headers['Authorization'] = `Bearer ${USER_TOKEN.trim()}`;
                 delete headers['Cookie'];
@@ -309,6 +315,367 @@ function readClipboardTextSync() {
         }
     } catch (e) {}
     return "";
+}
+
+// ============================== ★ 通用确认弹窗 ==============================
+class BangumiConfirmDialog {
+    constructor(options = {}) {
+        this.title = options.title || '确认';
+        this.message = options.message || '';
+        this.confirmText = options.confirmText || '确定';
+        this.cancelText = options.cancelText || '取消';
+        this.confirmColor = options.confirmColor || '#4caf50';
+        this.resolveFn = null;
+        this.resolved = false;
+        this.overlay = null;
+        this.escHandler = null;
+    }
+
+    openAndWait() {
+        return new Promise((resolve) => {
+            this.resolveFn = resolve;
+            this.render();
+        });
+    }
+
+    finish(result) {
+        if (this.resolved) return;
+        this.resolved = true;
+        if (this.escHandler) {
+            document.removeEventListener('keydown', this.escHandler);
+            this.escHandler = null;
+        }
+        if (this.overlay && this.overlay.parentNode) {
+            this.overlay.parentNode.removeChild(this.overlay);
+        }
+        if (this.resolveFn) this.resolveFn(result);
+    }
+
+    render() {
+        const old = document.getElementById(CONFIRM_DIALOG_ID);
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = CONFIRM_DIALOG_ID;
+        overlay.style.cssText = [
+            'position: fixed', 'inset: 0', 'z-index: 999998',
+            'background: rgba(0,0,0,0.55)',
+            'display: flex', 'align-items: center', 'justify-content: center',
+            'font-family: system-ui, -apple-system, "Segoe UI", sans-serif',
+        ].join(';');
+        this.overlay = overlay;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = [
+            'background: var(--background-primary, #fff)',
+            'color: var(--text-normal, #333)',
+            'border-radius: 10px',
+            'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
+            'padding: 22px 26px',
+            'width: 540px',
+            'max-width: 92vw',
+            'max-height: 88vh',
+            'overflow-y: auto',
+        ].join(';');
+        overlay.appendChild(panel);
+
+        const h2 = document.createElement('h2');
+        h2.textContent = this.title;
+        h2.style.cssText = 'margin: 0 0 14px 0;';
+        panel.appendChild(h2);
+
+        const msg = document.createElement('div');
+        msg.style.cssText = 'white-space: pre-wrap; line-height: 1.65; font-size: 0.95em; margin: 0 0 22px 0;';
+        msg.textContent = this.message;
+        panel.appendChild(msg);
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px;';
+
+        const cancelBtn = this._makeButton(this.cancelText, () => this.finish(false), '#757575');
+        btnRow.appendChild(cancelBtn);
+
+        const confirmBtn = this._makeButton(this.confirmText, () => this.finish(true), this.confirmColor);
+        confirmBtn.style.fontWeight = '600';
+        btnRow.appendChild(confirmBtn);
+
+        panel.appendChild(btnRow);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.finish(false);
+        });
+
+        this.escHandler = (e) => {
+            if (e.key === 'Escape') this.finish(false);
+        };
+        document.addEventListener('keydown', this.escHandler);
+
+        document.body.appendChild(overlay);
+
+        setTimeout(() => {
+            try { confirmBtn.focus(); } catch (e) {}
+        }, 50);
+    }
+
+    _makeButton(text, onClick, bgColor) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 8px 20px', 'cursor: pointer',
+            'border-radius: 6px',
+            `background: ${bgColor}`,
+            'color: #fff',
+            'border: none',
+            'font-size: 0.92em',
+        ].join(';');
+        btn.onmouseenter = () => { btn.style.opacity = '0.88'; };
+        btn.onmouseleave = () => { btn.style.opacity = '1'; };
+        btn.onclick = onClick;
+        return btn;
+    }
+}
+
+// ============================== ★ 多选弹窗（批量导入用） ==============================
+class BangumiMultiSelectDialog {
+    constructor(options = {}) {
+        this.title = options.title || '选择';
+        this.message = options.message || '';
+        this.items = options.items || [];  // [{ id, label }]
+        this.confirmText = options.confirmText || '确定';
+        this.cancelText = options.cancelText || '取消';
+        this.confirmColor = options.confirmColor || '#4caf50';
+        this.selected = new Set(this.items.map(it => it.id)); // 默认全选
+        this.resolveFn = null;
+        this.resolved = false;
+        this.overlay = null;
+        this.escHandler = null;
+        this.countEl = null;
+        this.checkboxEls = null;
+    }
+
+    openAndWait() {
+        return new Promise((resolve) => {
+            this.resolveFn = resolve;
+            this.render();
+        });
+    }
+
+    finish(result) {
+        if (this.resolved) return;
+        this.resolved = true;
+        if (this.escHandler) {
+            document.removeEventListener('keydown', this.escHandler);
+            this.escHandler = null;
+        }
+        if (this.overlay && this.overlay.parentNode) {
+            this.overlay.parentNode.removeChild(this.overlay);
+        }
+        if (this.resolveFn) this.resolveFn(result);
+    }
+
+    updateCount() {
+        if (this.countEl) {
+            this.countEl.textContent = `已选 ${this.selected.size} / ${this.items.length}`;
+        }
+    }
+
+    _refreshCheckboxes() {
+        if (!this.checkboxEls) return;
+        for (const [id, cb] of this.checkboxEls) {
+            cb.checked = this.selected.has(id);
+        }
+    }
+
+    render() {
+        const old = document.getElementById(MULTISELECT_DIALOG_ID);
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = MULTISELECT_DIALOG_ID;
+        overlay.style.cssText = [
+            'position: fixed', 'inset: 0', 'z-index: 999998',
+            'background: rgba(0,0,0,0.55)',
+            'display: flex', 'align-items: center', 'justify-content: center',
+            'font-family: system-ui, -apple-system, "Segoe UI", sans-serif',
+        ].join(';');
+        this.overlay = overlay;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = [
+            'background: var(--background-primary, #fff)',
+            'color: var(--text-normal, #333)',
+            'border-radius: 10px',
+            'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
+            'padding: 22px 26px',
+            'width: 600px',
+            'max-width: 92vw',
+            'max-height: 88vh',
+            'display: flex', 'flex-direction: column',
+        ].join(';');
+        overlay.appendChild(panel);
+
+        const h2 = document.createElement('h2');
+        h2.textContent = this.title;
+        h2.style.cssText = 'margin: 0 0 10px 0;';
+        panel.appendChild(h2);
+
+        if (this.message) {
+            const msg = document.createElement('div');
+            msg.textContent = this.message;
+            msg.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 12px 0; line-height: 1.5;';
+            panel.appendChild(msg);
+        }
+
+        // 工具栏
+        const toolbar = document.createElement('div');
+        toolbar.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex: 0 0 auto;';
+
+        const selectAllBtn = this._makeSmallButton('全选', () => {
+            this.selected = new Set(this.items.map(it => it.id));
+            this._refreshCheckboxes();
+            this.updateCount();
+        });
+        toolbar.appendChild(selectAllBtn);
+
+        const deselectAllBtn = this._makeSmallButton('全不选', () => {
+            this.selected.clear();
+            this._refreshCheckboxes();
+            this.updateCount();
+        });
+        toolbar.appendChild(deselectAllBtn);
+
+        const invertBtn = this._makeSmallButton('反选', () => {
+            const newSelected = new Set();
+            for (const it of this.items) {
+                if (!this.selected.has(it.id)) newSelected.add(it.id);
+            }
+            this.selected = newSelected;
+            this._refreshCheckboxes();
+            this.updateCount();
+        });
+        toolbar.appendChild(invertBtn);
+
+        const countEl = document.createElement('div');
+        countEl.style.cssText = 'margin-left: auto; color: var(--text-muted, #888); font-size: 0.9em;';
+        countEl.textContent = `已选 ${this.selected.size} / ${this.items.length}`;
+        this.countEl = countEl;
+        toolbar.appendChild(countEl);
+
+        panel.appendChild(toolbar);
+
+        // 列表容器（可滚动）
+        const listBox = document.createElement('div');
+        listBox.style.cssText = [
+            'flex: 1 1 auto',
+            'overflow-y: auto',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'border-radius: 6px',
+            'padding: 6px 8px',
+            'margin-bottom: 16px',
+            'min-height: 160px',
+            'max-height: 55vh',
+            'background: var(--background-secondary, #f8f8f8)',
+        ].join(';');
+        this.listBox = listBox;
+
+        this.checkboxEls = new Map();
+        for (const it of this.items) {
+            const row = document.createElement('label');
+            row.style.cssText = [
+                'display: flex', 'align-items: center', 'gap: 8px',
+                'padding: 6px 8px', 'border-radius: 4px', 'cursor: pointer',
+                'font-size: 0.92em',
+            ].join(';');
+            row.onmouseenter = () => { row.style.background = 'var(--background-modifier-hover, #eee)'; };
+            row.onmouseleave = () => { row.style.background = 'transparent'; };
+
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = true;
+            cb.style.cssText = 'cursor: pointer; flex: 0 0 auto;';
+            cb.onchange = () => {
+                if (cb.checked) this.selected.add(it.id);
+                else this.selected.delete(it.id);
+                this.updateCount();
+            };
+            row.appendChild(cb);
+
+            const label = document.createElement('span');
+            label.textContent = it.label;
+            label.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+            label.title = it.label;
+            row.appendChild(label);
+
+            this.checkboxEls.set(it.id, cb);
+            listBox.appendChild(row);
+        }
+
+        panel.appendChild(listBox);
+
+        // 底部按钮
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; flex: 0 0 auto;';
+
+        const cancelBtn = this._makeButton(this.cancelText, () => this.finish(null), '#757575');
+        btnRow.appendChild(cancelBtn);
+
+        const confirmBtn = this._makeButton(this.confirmText, () => {
+            this.finish(Array.from(this.selected));
+        }, this.confirmColor);
+        confirmBtn.style.fontWeight = '600';
+        btnRow.appendChild(confirmBtn);
+
+        panel.appendChild(btnRow);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.finish(null);
+        });
+
+        this.escHandler = (e) => {
+            if (e.key === 'Escape') this.finish(null);
+        };
+        document.addEventListener('keydown', this.escHandler);
+
+        document.body.appendChild(overlay);
+
+        setTimeout(() => {
+            try { confirmBtn.focus(); } catch (e) {}
+        }, 50);
+    }
+
+    _makeSmallButton(text, onClick) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 5px 12px', 'cursor: pointer',
+            'border-radius: 5px',
+            'background: var(--background-secondary, #eee)',
+            'color: var(--text-normal, #333)',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'font-size: 0.85em',
+        ].join(';');
+        btn.onmouseenter = () => { btn.style.background = 'var(--background-modifier-hover, #ddd)'; };
+        btn.onmouseleave = () => { btn.style.background = 'var(--background-secondary, #eee)'; };
+        btn.onclick = onClick;
+        return btn;
+    }
+
+    _makeButton(text, onClick, bgColor) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 8px 20px', 'cursor: pointer',
+            'border-radius: 6px',
+            `background: ${bgColor}`,
+            'color: #fff',
+            'border: none',
+            'font-size: 0.92em',
+        ].join(';');
+        btn.onmouseenter = () => { btn.style.opacity = '0.88'; };
+        btn.onmouseleave = () => { btn.style.opacity = '1'; };
+        btn.onclick = onClick;
+        return btn;
+    }
 }
 
 // ============================== ★ 纯 DOM 凭据弹窗 ==============================
@@ -647,11 +1014,6 @@ class BangumiCredentialsDialog {
 }
 
 // ============================== ★ 统一凭据保障 ==============================
-/**
- * 静默校验现有凭据 → 右上角 Notice 显示结果
- * ★ 只有 Token 和 Cookie 都通过才跳过弹窗
- * 任一失败 → 弹 DOM 弹窗（弹窗内要求两者都有效）
- */
 async function ensureCredentials() {
     let tokenOk = false;
     let cookieOk = false;
@@ -671,20 +1033,17 @@ async function ensureCredentials() {
         cookieOk = await checkCookieLoginOnly();
     }
 
-    // 右上角通知
     const tokenPart = tokenOk ? `Token ✅（${tokenUsername}）` : "Token ❌";
     const cookiePart = cookieOk ? "Cookie ✅" : "Cookie ❌";
     new Notice(`凭据校验：${tokenPart} | ${cookiePart}`, 4500);
     log(`[凭据校验] tokenOk=${tokenOk} cookieOk=${cookieOk}`);
 
-    // ★ 两项都通过才跳过弹窗
-    if (tokenOk && cookieOk) {
+    if (tokenOk) {
         return true;
     }
 
-    // 任一失败 → 弹窗（弹窗内要求两者都有效）
-    log("[凭据校验] 存在无效项，弹出凭据输入窗口");
-    const dialog = new BangumiCredentialsDialog({ requireBoth: true });
+    log("[凭据校验] Token 无效，弹出凭据输入窗口");
+    const dialog = new BangumiCredentialsDialog({ requireBoth: false });
     return await dialog.openAndWait();
 }
 
@@ -775,9 +1134,9 @@ async function fetchAllCollections(subjectType, collectionType) {
     return allItems;
 }
 
-async function fetchWatchedEpisodes(username, subjectId) {
+async function fetchWatchedEpisodes(subjectId) {
     const result = new Set();
-    if (!username || !subjectId) return result;
+    if (!subjectId) return result;
     try {
         let offset = 0;
         const limit = 100;
@@ -786,8 +1145,8 @@ async function fetchWatchedEpisodes(username, subjectId) {
         for (let page = 0; page < maxPages; page++) {
             if (BATCH_ABORT) break;
 
-            const url = `https://api.bgm.tv/v0/users/${encodeURIComponent(username)}` +
-                `/collections/${subjectId}/episodes?limit=${limit}&offset=${offset}`;
+            const url = `https://api.bgm.tv/v0/users/-/collections/${subjectId}/episodes` +
+                `?limit=${limit}&offset=${offset}`;
 
             const data = await requestGetJson(url);
             if (!data) { log(`获取已看剧集失败：API 无响应 subject=${subjectId}`); break; }
@@ -897,20 +1256,37 @@ async function bangumiBatch(QuickAddInstance) {
         return;
     }
 
-    const subjects = Array.from(subjectMap.values());
-    if (subjects.length === 0) {
+    const allSubjects = Array.from(subjectMap.values());
+    if (allSubjects.length === 0) {
         new Notice("没有拉取到任何动画收藏，已中止。", 5000);
         return;
     }
 
-    const proceed = await QuickAdd.quickAddApi.yesNoPrompt(
-        "准备批量生成笔记",
-        `共拉取到 ${subjects.length} 部动画。\n` +
-        `即将逐个生成笔记（是否覆盖已存在的文件，取决于 QuickAdd 模板设置）。\n\n` +
-        `过程中右下角会出现「中断导入」按钮，可随时中止。\n\n` +
-        `是否开始？`
-    );
-    if (!proceed) return;
+    // ★ 弹出多选窗口，默认全选
+    const chosenIds = await new BangumiMultiSelectDialog({
+        title: '选择要生成的动画',
+        message: `共 ${allSubjects.length} 部，默认全选。取消勾选不需要的条目。`,
+        items: allSubjects.map(s => ({
+            id: s.subject_id,
+            label: s.subject?.name_cn || s.subject?.name || String(s.subject_id),
+        })),
+        confirmText: '✅ 开始生成',
+        cancelText: '❌ 取消',
+        confirmColor: '#4caf50',
+    }).openAndWait();
+
+    if (!chosenIds || chosenIds.length === 0) {
+        new Notice("未选择任何动画，已中止。", 4000);
+        return;
+    }
+
+    const chosenSet = new Set(chosenIds);
+    const subjects = allSubjects.filter(s => chosenSet.has(s.subject_id));
+
+    if (subjects.length === 0) {
+        new Notice("未选择任何动画，已中止。", 4000);
+        return;
+    }
 
     showAbortButton();
 
@@ -930,7 +1306,7 @@ async function bangumiBatch(QuickAddInstance) {
             new Notice(`[${i + 1}/${subjects.length}] 正在处理：${displayName}`, 3000);
 
             try {
-                const watchedSet = await fetchWatchedEpisodes(username, item.subject_id);
+                const watchedSet = await fetchWatchedEpisodes(item.subject_id);
                 const Info = await getAnimeByurl(subjectUrl, { watchedSet });
 
                 if (Array.isArray(item.userTags) && item.userTags.length > 0) {
@@ -1140,9 +1516,8 @@ async function bangumi(QuickAddInstance) {
             case "anime": {
                 let watchedSet = null;
                 if (USER_TOKEN && USER_TOKEN.trim()) {
-                    const u = await getCurrentUsername();
                     const m = choice.link.match(/subject\/(\d+)/);
-                    if (u && m) watchedSet = await fetchWatchedEpisodes(u, m[1]);
+                    if (m) watchedSet = await fetchWatchedEpisodes(m[1]);
                 }
                 Info = await getAnimeByurl(choice.link, { watchedSet });
                 new Notice("正在生成动画笔记🎞");
