@@ -17,7 +17,12 @@
 //modify: ★ BangumiMultiSelectDialog 勾选弹窗
 //modify: ★ 多选弹窗支持「上一步」返回重选收藏类型；收藏结果缓存避免重复拉取
 //modify: ★ 新增 clearToken / clearCookie / setToken / setCookie / setTokenAndCookie 接口
-//modify: ★【本次新增】showCredentials 状态查看页面；getTokenExpiryEstimate 改为调用官方 /oauth/token_status 接口
+//modify: ★ showCredentials 状态查看页面
+//modify: ★ getTokenExpiryInfo 正确区分 expires 是时间戳还是剩余秒数
+//modify: ★ Token 即将过期时（<30 天）自动提醒
+//modify: ★ debugAuthState 同时输出控制台日志和弹窗状态
+//modify: ★ extractBaseInfo 输出 name / name_cn 字段；getAnimeByurl 支持 API 名优先
+//modify: ★【本次】token_status 解析 name 字段（应用名），在状态窗口展示
 
 // ========== 存储键名 ==========
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
@@ -29,6 +34,7 @@ const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
 
 // ========== 默认值常量 ==========
 const DEFAULT_SCORE_IF_EMPTY = "";
+const TOKEN_WARNING_DAYS = 30;
 
 // ========== 收藏状态映射 ==========
 const COLLECTION_TYPE_MAP = {
@@ -110,7 +116,6 @@ module.exports.updateCookieOnly = updateCookieOnly;
 module.exports.updateTokenOnly = updateTokenOnly;
 module.exports.ensureBatchCredentials = ensureBatchCredentials;
 module.exports.debugAuthState = debugAuthState;
-// ★ 独立接口
 module.exports.clearToken = clearToken;
 module.exports.clearCookie = clearCookie;
 module.exports.setToken = setToken;
@@ -272,18 +277,25 @@ function isValidBangumiCookie(cookieStr) {
     return cookieStr.includes("chii_auth=");
 }
 
-/**
- * 查询 Token 真实剩余有效期
- * 优先调用 Bangumi 官方 /oauth/token_status 接口
- * 失败时回退到基于保存时间的估算
- * @param {string} [token] - 可选，不传使用全局 USER_TOKEN
- * @returns {Promise<string>} 人类可读描述
- */
-async function getTokenExpiryEstimate(token) {
-    const tk = token || USER_TOKEN;
-    if (!tk || !tk.trim()) return "未设置";
+// ---- Token 到期时间 ----
 
-    // 1. 官方接口
+function buildExpiryDesc(remainingSec, expiryTs, source) {
+    const sourceLabel = source === 'api' ? '官方接口' : '估算';
+    if (remainingSec <= 0) {
+        const d = expiryTs ? new Date(expiryTs).toLocaleDateString() : '';
+        return `⚠️ 已过期${d ? `（${d}）` : ''}`;
+    }
+    const days = Math.floor(remainingSec / 86400);
+    const hours = Math.floor((remainingSec % 86400) / 3600);
+    const dateStr = expiryTs ? `，到期 ${new Date(expiryTs).toLocaleDateString()}` : '';
+    if (days > 0) return `约剩余 ${days} 天 ${hours} 小时（${sourceLabel}${dateStr}）`;
+    return `约剩余 ${hours} 小时（${sourceLabel}）`;
+}
+
+async function getTokenExpiryInfo(token) {
+    const tk = token || USER_TOKEN;
+    if (!tk || !tk.trim()) return { ok: false, description: "未设置" };
+
     try {
         const url = `https://bgm.tv/oauth/token_status?access_token=${encodeURIComponent(tk.trim())}`;
         const res = await request({
@@ -298,12 +310,44 @@ async function getTokenExpiryEstimate(token) {
             try {
                 const data = JSON.parse(res);
                 if (data && typeof data.expires === "number") {
-                    const totalSec = data.expires;
-                    if (totalSec <= 0) return "⚠️ 已过期";
-                    const days = Math.floor(totalSec / 86400);
-                    const hours = Math.floor((totalSec % 86400) / 3600);
-                    if (days > 0) return `约剩余 ${days} 天 ${hours} 小时（官方接口）`;
-                    return `约剩余 ${hours} 小时（官方接口）`;
+                    let remainingSec, expiryTs = null;
+                    if (data.expires > 1e9) {
+                        remainingSec = data.expires - Math.floor(Date.now() / 1000);
+                        expiryTs = data.expires * 1000;
+                    } else {
+                        remainingSec = data.expires;
+                        expiryTs = Date.now() + remainingSec * 1000;
+                    }
+
+                    // ★ 解析 info 字段（JSON 字符串）
+                    let name = null;
+                    let createdAt = null;
+                    if (data.info) {
+                        try {
+                            const infoObj = typeof data.info === "string"
+                                ? JSON.parse(data.info)
+                                : data.info;
+                            if (infoObj) {
+                                name = infoObj.name || null;
+                                createdAt = infoObj.created_at || null;
+                            }
+                        } catch (e) {
+                            log(`Token info 字段解析失败: ${e.message}`);
+                        }
+                    }
+
+                    return {
+                        ok: true,
+                        remainingSec,
+                        expiryTs,
+                        source: 'api',
+                        name,
+                        createdAt,
+                        userId: data.user_id || null,
+                        clientId: data.client_id || null,
+                        scope: data.scope || null,
+                        description: buildExpiryDesc(remainingSec, expiryTs, 'api'),
+                    };
                 }
             } catch (e) {
                 log(`Token 状态解析失败: ${e.message}`);
@@ -313,14 +357,48 @@ async function getTokenExpiryEstimate(token) {
         log(`Token 状态 API 查询失败: ${e.message}`);
     }
 
-    // 2. 回退估算
-    if (!TOKEN_SAVED_AT) return "未记录保存时间（估算不可用）";
+    if (!TOKEN_SAVED_AT) return { ok: false, description: "未记录保存时间（估算不可用）" };
     const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
-    const elapsed = Date.now() - TOKEN_SAVED_AT;
-    const remaining = ONE_YEAR_MS - elapsed;
-    if (remaining <= 0) return "⚠️ 估算已过期（超过 1 年）";
-    const days = Math.floor(remaining / (24 * 60 * 60 * 1000));
-    return `约剩余 ${days} 天（估算，官方接口不可用）`;
+    const remainingMs = ONE_YEAR_MS - (Date.now() - TOKEN_SAVED_AT);
+    const remainingSec = Math.floor(remainingMs / 1000);
+    const expiryTs = TOKEN_SAVED_AT + ONE_YEAR_MS;
+    return {
+        ok: true,
+        remainingSec,
+        expiryTs,
+        source: 'estimate',
+        name: null,
+        createdAt: null,
+        userId: null,
+        clientId: null,
+        scope: null,
+        description: buildExpiryDesc(remainingSec, expiryTs, 'estimate'),
+    };
+}
+
+async function getTokenExpiryEstimate(token) {
+    const info = await getTokenExpiryInfo(token);
+    return info.description;
+}
+
+async function checkTokenExpiryWarning() {
+    try {
+        const info = await getTokenExpiryInfo();
+        if (!info.ok) return;
+        if (info.remainingSec <= 0) {
+            new Notice(`⚠️ Token 估算已过期，请尽快重新生成。\n${info.description}`, 8000);
+            return;
+        }
+        const days = info.remainingSec / 86400;
+        if (days < TOKEN_WARNING_DAYS) {
+            new Notice(
+                `⚠️ Token 剩余不足 ${TOKEN_WARNING_DAYS} 天，建议尽快重新生成。\n${info.description}`,
+                8000
+            );
+        }
+    } catch (e) {
+        log(`Token 到期提醒检查失败: ${e.message}`);
+    }
 }
 
 // ============================== 凭据持久化 ==============================
@@ -484,7 +562,7 @@ class BangumiConfirmDialog {
     }
 }
 
-// ============================== ★ 多选弹窗（批量导入用） ==============================
+// ============================== ★ 多选弹窗 ==============================
 class BangumiMultiSelectDialog {
     constructor(options = {}) {
         this.title = options.title || '选择';
@@ -739,11 +817,11 @@ class BangumiMultiSelectDialog {
     }
 }
 
-// ============================== ★ 纯 DOM 凭据弹窗 ==============================
+// ============================== ★ 凭据弹窗 ==============================
 class BangumiCredentialsDialog {
     constructor(options = {}) {
         this.requireBoth = options.requireBoth !== false;
-        this.focusField = options.focusField || 'auto'; // 'token' | 'cookie' | 'auto'
+        this.focusField = options.focusField || 'auto';
         this.resolveFn = null;
         this.resolved = false;
         this.tokenValid = false;
@@ -817,7 +895,7 @@ class BangumiCredentialsDialog {
         info.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 16px 0;';
         panel.appendChild(info);
 
-        // ---- Token 区 ----
+        // Token 区
         const tokenSec = document.createElement('div');
         tokenSec.style.marginBottom = '16px';
         const tokenLabel = document.createElement('div');
@@ -856,9 +934,12 @@ class BangumiCredentialsDialog {
         this.tokenStatusEl = tokenStatus;
         if (USER_TOKEN) {
             tokenStatus.textContent = `已保存 | 正在查询到期时间…`;
-            getTokenExpiryEstimate().then(exp => {
+            getTokenExpiryInfo().then(info => {
                 if (this.tokenStatusEl === tokenStatus) {
-                    tokenStatus.textContent = `已保存 | ${exp}`;
+                    const parts = [`已保存`];
+                    if (info.name) parts.push(`应用：${info.name}`);
+                    parts.push(info.description);
+                    tokenStatus.textContent = parts.join(' | ');
                 }
             }).catch(() => {
                 if (this.tokenStatusEl === tokenStatus) {
@@ -872,7 +953,7 @@ class BangumiCredentialsDialog {
 
         panel.appendChild(tokenSec);
 
-        // ---- Cookie 区 ----
+        // Cookie 区
         const cookieSec = document.createElement('div');
         cookieSec.style.marginBottom = '16px';
         const cookieLabel = document.createElement('div');
@@ -918,7 +999,7 @@ class BangumiCredentialsDialog {
 
         panel.appendChild(cookieSec);
 
-        // ---- 按钮区 ----
+        // 按钮区
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;';
 
@@ -942,7 +1023,6 @@ class BangumiCredentialsDialog {
 
         document.body.appendChild(overlay);
 
-        // 自动聚焦
         setTimeout(() => {
             try {
                 if (this.focusField === 'token') tokenInput.focus();
@@ -986,8 +1066,12 @@ class BangumiCredentialsDialog {
         if (username) {
             this.tokenValid = true;
             this.tokenUsername = username;
-            this.tokenStatusEl.textContent = `✅ 有效（用户：${username}）`;
-            new Notice(`Token 校验通过 ✅ 用户：${username}`, 4000);
+            const info = await getTokenExpiryInfo(token);
+            const parts = [`✅ 有效（用户：${username}）`];
+            if (info.name) parts.push(`应用：${info.name}`);
+            parts.push(info.description);
+            this.tokenStatusEl.textContent = parts.join(' | ');
+            new Notice(`Token 校验通过 ✅ 用户：${username}\n${info.description}`, 4000);
             return true;
         }
         this.tokenValid = false;
@@ -1153,7 +1237,7 @@ class BangumiStatusDialog {
         h2.style.cssText = 'margin: 0 0 14px 0;';
         panel.appendChild(h2);
 
-        // ---- Token 状态 ----
+        // Token 状态
         const tokenSec = document.createElement('div');
         tokenSec.style.cssText = [
             'padding: 12px 14px',
@@ -1174,7 +1258,7 @@ class BangumiStatusDialog {
 
         panel.appendChild(tokenSec);
 
-        // ---- Cookie 状态 ----
+        // Cookie 状态
         const cookieSec = document.createElement('div');
         cookieSec.style.cssText = [
             'padding: 12px 14px',
@@ -1195,7 +1279,7 @@ class BangumiStatusDialog {
 
         panel.appendChild(cookieSec);
 
-        // ---- 按钮区 ----
+        // 按钮区
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display: flex; justify-content: space-between; gap: 10px;';
 
@@ -1222,7 +1306,7 @@ class BangumiStatusDialog {
         panel.appendChild(btnRow);
 
         overlay.addEventListener('click', (e) => {
-            if (e.target === target) this.finish('close');
+            if (e.target === overlay) this.finish('close');
         });
 
         this.escHandler = (e) => {
@@ -1232,26 +1316,58 @@ class BangumiStatusDialog {
 
         document.body.appendChild(overlay);
 
-        // ---- 异步查询状态 ----
         (async () => {
-            // Token 状态
             if (USER_TOKEN && USER_TOKEN.trim()) {
                 const username = await validateAccessToken(USER_TOKEN);
-                const expiry = await getTokenExpiryEstimate();
+                const expiryInfo = await getTokenExpiryInfo();
                 const tokenDisplay = USER_TOKEN.slice(0, 8) + "..." + USER_TOKEN.slice(-6);
+
                 tokenInfoEl.innerHTML = '';
                 tokenInfoEl.appendChild(this._makeLine('状态', username ? `✅ 有效` : `❌ 无效`));
                 if (username) {
                     tokenInfoEl.appendChild(this._makeLine('用户', username));
                 }
-                tokenInfoEl.appendChild(this._makeLine('到期', expiry));
+                // ★ 新增：应用名
+                if (expiryInfo.name) {
+                    tokenInfoEl.appendChild(this._makeLine('应用', expiryInfo.name));
+                }
+				// ★ 新增：Token 创建时间
+				if (expiryInfo.createdAt) {
+					const createdStr = (() => {
+						try { return new Date(expiryInfo.createdAt).toLocaleString(); }
+						catch (e) { return expiryInfo.createdAt; }
+					})();
+					tokenInfoEl.appendChild(this._makeLine('创建', createdStr));
+				}
+                // client_id
+                if (expiryInfo.clientId) {
+                    tokenInfoEl.appendChild(this._makeLine('Client ID', String(expiryInfo.clientId)));
+                }
+                // scope
+                if (expiryInfo.scope) {
+                    tokenInfoEl.appendChild(this._makeLine('Scope', String(expiryInfo.scope)));
+                }
+
+                const expiryLine = this._makeLine('到期', expiryInfo.description);
+                if (expiryInfo.ok) {
+                    const days = expiryInfo.remainingSec / 86400;
+                    if (expiryInfo.remainingSec <= 0) {
+                        expiryLine.style.color = '#c62828';
+                        expiryLine.style.fontWeight = '600';
+                    } else if (days < TOKEN_WARNING_DAYS) {
+                        expiryLine.style.color = '#e65100';
+                        expiryLine.style.fontWeight = '600';
+                    } else {
+                        expiryLine.style.color = '#2e7d32';
+                    }
+                }
+                tokenInfoEl.appendChild(expiryLine);
                 tokenInfoEl.appendChild(this._makeLine('令牌', tokenDisplay));
             } else {
                 tokenInfoEl.textContent = '❌ 未设置';
                 tokenInfoEl.style.color = 'var(--text-muted, #888)';
             }
 
-            // Cookie 状态
             if (USER_COOKIE && USER_COOKIE.trim()) {
                 const ok = await checkCookieLoginOnly();
                 const cookieDisplay = USER_COOKIE.length > 60
@@ -1329,6 +1445,7 @@ async function ensureCredentials() {
     log(`[凭据校验] tokenOk=${tokenOk} cookieOk=${cookieOk}`);
 
     if (tokenOk) {
+        await checkTokenExpiryWarning();
         return true;
     }
 
@@ -1370,32 +1487,25 @@ async function ensureBatchCredentials() {
 
 // ============================== ★ 独立接口：查看 / 设置 / 清理 ==============================
 
-/**
- * 查看凭据状态（弹窗）
- * 可以反复刷新、直接跳到编辑
- */
 async function showCredentials() {
+    await checkTokenExpiryWarning();
+
     while (true) {
         const action = await new BangumiStatusDialog().openAndWait();
         if (action === 'edit') {
             const dialog = new BangumiCredentialsDialog({ requireBoth: false });
             await dialog.openAndWait();
-            // 编辑后回到状态页面
             continue;
         }
         if (action === 'refresh') {
-            // 重新打开就是刷新
+            await checkTokenExpiryWarning();
             continue;
         }
-        // close
         break;
     }
     return true;
 }
 
-/**
- * 设置 Token（弹窗）
- */
 async function setToken() {
     const dialog = new BangumiCredentialsDialog({
         requireBoth: false,
@@ -1404,9 +1514,6 @@ async function setToken() {
     return await dialog.openAndWait();
 }
 
-/**
- * 设置 Cookie（弹窗）
- */
 async function setCookie() {
     const dialog = new BangumiCredentialsDialog({
         requireBoth: false,
@@ -1415,9 +1522,6 @@ async function setCookie() {
     return await dialog.openAndWait();
 }
 
-/**
- * 设置 Token 和 Cookie（弹窗）
- */
 async function setTokenAndCookie() {
     const dialog = new BangumiCredentialsDialog({
         requireBoth: false,
@@ -1426,9 +1530,6 @@ async function setTokenAndCookie() {
     return await dialog.openAndWait();
 }
 
-/**
- * 清理 Token（带确认 + 提醒）
- */
 async function clearToken() {
     if (!USER_TOKEN || !USER_TOKEN.trim()) {
         new Notice("当前没有保存 Token。", 3000);
@@ -1454,9 +1555,6 @@ async function clearToken() {
     return true;
 }
 
-/**
- * 清理 Cookie（带确认 + 提醒）
- */
 async function clearCookie() {
     if (!USER_COOKIE || !USER_COOKIE.trim()) {
         new Notice("当前没有保存 Cookie。", 3000);
@@ -1487,7 +1585,11 @@ async function debugAuthState() {
     console.log("=== Bangumi 凭据状态 ===");
     console.log("Token:", USER_TOKEN ? `已设置 (${USER_TOKEN.slice(0, 8)}...)` : "空");
     console.log("Token 保存时间:", TOKEN_SAVED_AT ? new Date(TOKEN_SAVED_AT).toLocaleString() : "未知");
-    console.log("Token 过期查询:", await getTokenExpiryEstimate());
+    const info = await getTokenExpiryInfo();
+    console.log("Token 过期查询:", info.description);
+    if (info.name) console.log("Token 应用名:", info.name);
+    if (info.clientId) console.log("Token Client ID:", info.clientId);
+    if (info.scope) console.log("Token Scope:", info.scope);
     console.log("Cookie:", USER_COOKIE ? `已设置 (${USER_COOKIE.slice(0, 30)}...)` : "空");
     console.log("USER_NAME:", USER_NAME || "空");
     try {
@@ -1496,11 +1598,15 @@ async function debugAuthState() {
     } catch (e) {
         console.log("Cookie 校验异常:", e.message);
     }
+
+    await showCredentials();
+
     return {
         hasToken: !!USER_TOKEN,
         hasCookie: !!USER_COOKIE,
         tokenSavedAt: TOKEN_SAVED_AT,
-        expiryEstimate: await getTokenExpiryEstimate(),
+        expiryEstimate: info.description,
+        tokenName: info.name,
     };
 }
 
@@ -1743,7 +1849,11 @@ async function bangumiBatch(QuickAddInstance) {
 
             try {
                 const watchedSet = await fetchWatchedEpisodes(item.subject_id);
-                const Info = await getAnimeByurl(subjectUrl, { watchedSet });
+                const Info = await getAnimeByurl(subjectUrl, {
+                    watchedSet,
+                    apiName: item.subject?.name || "",
+                    apiNameCn: item.subject?.name_cn || "",
+                });
 
                 if (Array.isArray(item.userTags) && item.userTags.length > 0) {
                     Info.tags = item.userTags;
@@ -1793,6 +1903,9 @@ function extractBaseInfo(doc, type) {
     const nameArr = workingname.split(",");
     workinginfo.CN = (nameArr[0]?.replace(regex, ' ') || " ").trim() || " ";
     workinginfo.JP = (nameArr[1]?.replace(regex, ' ') || " ").trim() || " ";
+    // ★ 新增别名：name/name_cn 分别映射到 JP/CN，方便模板统一使用
+    workinginfo.name_cn = workinginfo.CN;
+    workinginfo.name = workinginfo.JP;
     workinginfo.fileName = `${workinginfo.CN}_${workinginfo.JP}`.trim() || "未知作品";
 
     workinginfo.type = ($("small.grey")?.textContent || " ").trim() || " ";
@@ -2064,6 +2177,14 @@ async function getAnimeByurl(url, options = {}) {
     }
 
     const workinginfo = extractBaseInfo(doc, "anime");
+
+    // ★ API 优先：如果传入了 API 名字，覆盖 HTML 解析出的名字
+    if (options.apiName) workinginfo.JP = options.apiName;
+    if (options.apiNameCn) workinginfo.CN = options.apiNameCn;
+    // 同步 name/name_cn 别名
+    workinginfo.name = workinginfo.JP || " ";
+    workinginfo.name_cn = workinginfo.CN || " ";
+    workinginfo.fileName = `${workinginfo.CN}_${workinginfo.JP}`.trim() || "未知作品";
 
     const strTmp = Array.from($$("#infobox > li")).map(li => li.innerText.trim()).join("\n");
     const authorMatchTmp = /导演:\s*([^\n]*)/.exec(strTmp) || /作者:\s*([^\n]*)/.exec(strTmp) || /原作:\s*([^\n]*)/.exec(strTmp);
