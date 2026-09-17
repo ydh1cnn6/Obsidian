@@ -8,16 +8,15 @@
 //modify: 增加登录检测 + 浏览器跳转 + 粘贴 Cookie 自动提取拼接流程
 //modify: Cookie 持久化到 Obsidian 本地存储，重启后无需重新粘贴
 //modify: 优先使用 Bangumi 个人访问令牌（Access Token）认证，令牌无效/未配置时回退 Cookie 流程
-//modify: 新增批量模式（bangumiBatch）——按收藏状态一次性拉取动画并批量生成笔记
-//modify: 批量模式支持中断按钮；批量模式不再弹 score 输入框，改用 Bangumi 已有评分或默认值
+//modify: 新增批量模式（bangumiBatch）
 //modify: HTML 页面请求只走 Cookie，API 请求只走 Token
 //modify: getParagraph 双分支：优先 API 已看集合，无则回退 HTML <small>
-//modify: ★ 纯 DOM 凭据弹窗（不依赖 obsidian 模块）
-//modify: ★ 普通和批量导入前静默校验，两项都通过不弹窗
+//modify: ★ 纯 DOM 凭据弹窗
 //modify: ★ fetchWatchedEpisodes 路径改为 /v0/users/-/collections/{subject_id}/episodes
-//modify: ★ requestGet 合并 COMMON_HEADERS 与 customHeaders，避免丢失 User-Agent
-//modify: ★ API GET 请求显式移除 Content-Type
-//modify: ★【本次新增】BangumiMultiSelectDialog 勾选弹窗，批量导入前可选择生成哪些动画
+//modify: ★ requestGet 合并 COMMON_HEADERS 与 customHeaders
+//modify: ★ BangumiMultiSelectDialog 勾选弹窗
+//modify: ★ 多选弹窗支持「上一步」返回重选收藏类型；收藏结果缓存避免重复拉取
+//modify: ★ 新增 clearToken / clearCookie / setToken / setCookie / setTokenAndCookie 接口
 
 // ========== 存储键名 ==========
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
@@ -45,6 +44,8 @@ const COLLECTION_LABEL_TO_TYPE = {
     "搁置": 4,
     "抛弃": 5,
 };
+
+const BACK_SIGNAL = "__BANGUMI_BACK__";
 
 // ========== 认证凭据初始化 ==========
 let USER_COOKIE = (() => {
@@ -107,6 +108,12 @@ module.exports.updateCookieOnly = updateCookieOnly;
 module.exports.updateTokenOnly = updateTokenOnly;
 module.exports.ensureBatchCredentials = ensureBatchCredentials;
 module.exports.debugAuthState = debugAuthState;
+// ★ 独立接口
+module.exports.clearToken = clearToken;
+module.exports.clearCookie = clearCookie;
+module.exports.setToken = setToken;
+module.exports.setCookie = setCookie;
+module.exports.setTokenAndCookie = setTokenAndCookie;
 
 let QuickAdd;
 let pageNum = 1;
@@ -440,11 +447,12 @@ class BangumiMultiSelectDialog {
     constructor(options = {}) {
         this.title = options.title || '选择';
         this.message = options.message || '';
-        this.items = options.items || [];  // [{ id, label }]
+        this.items = options.items || [];
         this.confirmText = options.confirmText || '确定';
         this.cancelText = options.cancelText || '取消';
+        this.backButtonText = options.backButtonText || '';
         this.confirmColor = options.confirmColor || '#4caf50';
-        this.selected = new Set(this.items.map(it => it.id)); // 默认全选
+        this.selected = new Set(this.items.map(it => it.id));
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
@@ -526,7 +534,6 @@ class BangumiMultiSelectDialog {
             panel.appendChild(msg);
         }
 
-        // 工具栏
         const toolbar = document.createElement('div');
         toolbar.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex: 0 0 auto;';
 
@@ -563,7 +570,6 @@ class BangumiMultiSelectDialog {
 
         panel.appendChild(toolbar);
 
-        // 列表容器（可滚动）
         const listBox = document.createElement('div');
         listBox.style.cssText = [
             'flex: 1 1 auto',
@@ -612,19 +618,32 @@ class BangumiMultiSelectDialog {
 
         panel.appendChild(listBox);
 
-        // 底部按钮
         const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; flex: 0 0 auto;';
+        btnRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 10px; flex: 0 0 auto;';
+
+        const leftGroup = document.createElement('div');
+        leftGroup.style.cssText = 'display: flex; gap: 10px;';
+
+        if (this.backButtonText) {
+            const backBtn = this._makeButton(this.backButtonText, () => this.finish(BACK_SIGNAL), '#607d8b');
+            leftGroup.appendChild(backBtn);
+        }
+
+        btnRow.appendChild(leftGroup);
+
+        const rightGroup = document.createElement('div');
+        rightGroup.style.cssText = 'display: flex; gap: 10px;';
 
         const cancelBtn = this._makeButton(this.cancelText, () => this.finish(null), '#757575');
-        btnRow.appendChild(cancelBtn);
+        rightGroup.appendChild(cancelBtn);
 
         const confirmBtn = this._makeButton(this.confirmText, () => {
             this.finish(Array.from(this.selected));
         }, this.confirmColor);
         confirmBtn.style.fontWeight = '600';
-        btnRow.appendChild(confirmBtn);
+        rightGroup.appendChild(confirmBtn);
 
+        btnRow.appendChild(rightGroup);
         panel.appendChild(btnRow);
 
         overlay.addEventListener('click', (e) => {
@@ -755,7 +774,6 @@ class BangumiCredentialsDialog {
         info.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 16px 0;';
         panel.appendChild(info);
 
-        // ---- Token 区 ----
         const tokenSec = document.createElement('div');
         tokenSec.style.marginBottom = '16px';
         const tokenLabel = document.createElement('div');
@@ -799,7 +817,6 @@ class BangumiCredentialsDialog {
 
         panel.appendChild(tokenSec);
 
-        // ---- Cookie 区 ----
         const cookieSec = document.createElement('div');
         cookieSec.style.marginBottom = '16px';
         const cookieLabel = document.createElement('div');
@@ -845,7 +862,6 @@ class BangumiCredentialsDialog {
 
         panel.appendChild(cookieSec);
 
-        // ---- 按钮区 ----
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;';
 
@@ -1078,6 +1094,142 @@ async function ensureBatchCredentials() {
     return ensureCredentials();
 }
 
+// ============================== ★ 独立接口：清理 / 设置凭据 ==============================
+
+/**
+ * 清理 Token
+ */
+async function clearToken(silent = false) {
+    clearPersistedToken();
+    USER_TOKEN = "";
+    if (!silent) {
+        new Notice("已清除 Access Token。", 4000);
+    }
+    log("[clearToken] Token 已清除");
+    return true;
+}
+
+/**
+ * 清理 Cookie
+ */
+async function clearCookie(silent = false) {
+    clearPersistedCookie();
+    USER_COOKIE = "";
+    if (!silent) {
+        new Notice("已清除 Cookie。", 4000);
+    }
+    log("[clearCookie] Cookie 已清除");
+    return true;
+}
+
+/**
+ * 设置 Token
+ */
+async function setToken(token) {
+    let input = token;
+
+    if (!input) {
+        const fromClipboard = readClipboardTextSync();
+        const clipboardIsToken = fromClipboard
+            && fromClipboard.length > 20
+            && !fromClipboard.includes(' ')
+            && !fromClipboard.includes('=')
+            && !fromClipboard.includes(';');
+        const defaultValue = (clipboardIsToken ? fromClipboard : "") || "在此粘贴 Access Token";
+        input = await QuickAdd.quickAddApi.inputPrompt(
+            "输入 Access Token\n（在 https://next.bgm.tv/demo/access-token 生成）",
+            defaultValue
+        );
+        if (input === null) {
+            new Notice("已取消。", 3000);
+            return false;
+        }
+    }
+
+    input = String(input || "").trim();
+    if (!input) {
+        new Notice("Token 为空。", 3000);
+        return false;
+    }
+
+    new Notice("正在校验 Token…", 3000);
+    const username = await validateAccessToken(input);
+    if (!username) {
+        new Notice("Token 无效 ❌", 4000);
+        return false;
+    }
+
+    USER_TOKEN = input;
+    USER_NAME = username;
+    persistToken(input);
+    new Notice(`Token 已保存 ✅ 用户：${username}`, 4000);
+    log(`[setToken] 已保存，用户=${username}`);
+    return true;
+}
+
+/**
+ * 设置 Cookie
+ */
+async function setCookie(cookie) {
+    let input = cookie;
+
+    if (!input) {
+        const fromClipboard = readClipboardTextSync();
+        const cleanedFromClipboard = fromClipboard ? sanitizeCookieInput(fromClipboard) : "";
+        const clipboardIsCookie = isValidBangumiCookie(cleanedFromClipboard);
+        const defaultValue = (clipboardIsCookie ? cleanedFromClipboard : "")
+            || "chii_auth=...; chii_sec_id=...; chii_sid=...";
+        input = await QuickAdd.quickAddApi.inputPrompt(
+            "输入 Cookie\n（从浏览器 F12 → Application → Cookies → https://bgm.tv 复制）",
+            defaultValue
+        );
+        if (input === null) {
+            new Notice("已取消。", 3000);
+            return false;
+        }
+    }
+
+    const cleaned = sanitizeCookieInput(String(input || "").trim());
+    if (!isValidBangumiCookie(cleaned)) {
+        new Notice("Cookie 无效（缺少 chii_auth）❌", 5000);
+        return false;
+    }
+
+    new Notice("正在校验 Cookie…", 3000);
+    const ok = await checkCookieLoginTemp(cleaned);
+    if (!ok) {
+        new Notice("Cookie 校验失败 ❌（可能已过期或复制不完整）", 5000);
+        return false;
+    }
+
+    USER_COOKIE = cleaned;
+    persistCookie(cleaned);
+    new Notice("Cookie 已保存 ✅", 4000);
+    log("[setCookie] Cookie 已保存");
+    return true;
+}
+
+/**
+ * 一次性设置 Token 和 Cookie
+ */
+async function setTokenAndCookie(token, cookie) {
+    let tokenOk = false;
+    let cookieOk = false;
+
+    if (token !== undefined || cookie === undefined) {
+        tokenOk = await setToken(token);
+    }
+    if (cookie !== undefined || token === undefined) {
+        cookieOk = await setCookie(cookie);
+    }
+
+    new Notice(
+        `设置完成\nToken：${tokenOk ? "✅" : "❌"}\nCookie：${cookieOk ? "✅" : "❌"}`,
+        5000
+    );
+    return { tokenOk, cookieOk };
+}
+
 // ============================== 调试 ==============================
 async function debugAuthState() {
     console.log("=== Bangumi 凭据状态 ===");
@@ -1220,20 +1372,44 @@ async function bangumiBatch(QuickAddInstance) {
 
     const allLabels = ["想看", "在看", "看过", "搁置", "抛弃"];
     const defaultChecked = ["想看", "在看", "看过"];
-    const selectedLabels = await QuickAdd.quickAddApi.checkboxPrompt(allLabels, defaultChecked);
-    if (!selectedLabels || selectedLabels.length === 0) {
-        new Notice("未选择任何收藏类型，已中止。", 4000);
-        return;
-    }
-    const typesToFetch = selectedLabels.map(l => COLLECTION_LABEL_TO_TYPE[l]).filter(Boolean);
 
-    new Notice(`正在拉取收藏（${selectedLabels.join("、")}）…`, 4000);
+    const collectionCache = new Map();
+    let subjects = null;
 
-    const subjectMap = new Map();
-    for (const t of typesToFetch) {
-        if (BATCH_ABORT) break;
-        try {
-            const items = await fetchAllCollections(2, t);
+    while (true) {
+        const selectedLabels = await QuickAdd.quickAddApi.checkboxPrompt(allLabels, defaultChecked);
+        if (!selectedLabels || selectedLabels.length === 0) {
+            new Notice("未选择任何收藏类型，已中止。", 4000);
+            return;
+        }
+        const typesToFetch = selectedLabels.map(l => COLLECTION_LABEL_TO_TYPE[l]).filter(Boolean);
+
+        const needFetch = typesToFetch.filter(t => !collectionCache.has(t));
+
+        if (needFetch.length === 0) {
+            new Notice(`正在使用已缓存的收藏（${selectedLabels.join("、")}）…`, 3000);
+        } else {
+            new Notice(`正在拉取收藏（${selectedLabels.join("、")}）…`, 4000);
+        }
+
+        const subjectMap = new Map();
+        for (const t of typesToFetch) {
+            if (BATCH_ABORT) break;
+            let items;
+            if (collectionCache.has(t)) {
+                items = collectionCache.get(t);
+                log(`[缓存命中] type=${t}，共 ${items.length} 条`);
+            } else {
+                try {
+                    items = await fetchAllCollections(2, t);
+                    collectionCache.set(t, items);
+                    log(`[拉取完成] type=${t}，共 ${items.length} 条`);
+                } catch (e) {
+                    new Notice(`拉取「${COLLECTION_TYPE_MAP[t]}」失败：${e.message}`, 6000);
+                    log(`拉取失败: ${e.message}`);
+                    continue;
+                }
+            }
             for (const item of items) {
                 if (!subjectMap.has(item.subject_id)) {
                     subjectMap.set(item.subject_id, {
@@ -1245,45 +1421,53 @@ async function bangumiBatch(QuickAddInstance) {
                     });
                 }
             }
-        } catch (e) {
-            new Notice(`拉取「${COLLECTION_TYPE_MAP[t]}」失败：${e.message}`, 6000);
-            log(`拉取失败: ${e.message}`);
         }
+
+        if (BATCH_ABORT) {
+            new Notice("已在拉取阶段中断，未生成任何笔记。", 5000);
+            return;
+        }
+
+        const allSubjects = Array.from(subjectMap.values());
+        if (allSubjects.length === 0) {
+            new Notice("没有拉取到任何动画收藏，返回上一步。", 5000);
+            continue;
+        }
+
+        const result = await new BangumiMultiSelectDialog({
+            title: '选择要生成的动画',
+            message: `共 ${allSubjects.length} 部，默认全选。取消勾选不需要的条目。`,
+            items: allSubjects.map(s => ({
+                id: s.subject_id,
+                label: s.subject?.name_cn || s.subject?.name || String(s.subject_id),
+            })),
+            confirmText: '✅ 开始生成',
+            cancelText: '❌ 取消',
+            backButtonText: '⬅ 上一步',
+            confirmColor: '#4caf50',
+        }).openAndWait();
+
+        if (result === null) {
+            new Notice("操作已取消。", 4000);
+            return;
+        }
+
+        if (result === BACK_SIGNAL) {
+            log("[多选弹窗] 用户点击上一步，返回收藏类型选择");
+            continue;
+        }
+
+        if (Array.isArray(result) && result.length > 0) {
+            const chosenSet = new Set(result);
+            subjects = allSubjects.filter(s => chosenSet.has(s.subject_id));
+            break;
+        }
+
+        new Notice("未选择任何动画，请重新选择或取消。", 4000);
+        continue;
     }
 
-    if (BATCH_ABORT) {
-        new Notice("已在拉取阶段中断，未生成任何笔记。", 5000);
-        return;
-    }
-
-    const allSubjects = Array.from(subjectMap.values());
-    if (allSubjects.length === 0) {
-        new Notice("没有拉取到任何动画收藏，已中止。", 5000);
-        return;
-    }
-
-    // ★ 弹出多选窗口，默认全选
-    const chosenIds = await new BangumiMultiSelectDialog({
-        title: '选择要生成的动画',
-        message: `共 ${allSubjects.length} 部，默认全选。取消勾选不需要的条目。`,
-        items: allSubjects.map(s => ({
-            id: s.subject_id,
-            label: s.subject?.name_cn || s.subject?.name || String(s.subject_id),
-        })),
-        confirmText: '✅ 开始生成',
-        cancelText: '❌ 取消',
-        confirmColor: '#4caf50',
-    }).openAndWait();
-
-    if (!chosenIds || chosenIds.length === 0) {
-        new Notice("未选择任何动画，已中止。", 4000);
-        return;
-    }
-
-    const chosenSet = new Set(chosenIds);
-    const subjects = allSubjects.filter(s => chosenSet.has(s.subject_id));
-
-    if (subjects.length === 0) {
+    if (!subjects || subjects.length === 0) {
         new Notice("未选择任何动画，已中止。", 4000);
         return;
     }
