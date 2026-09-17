@@ -13,6 +13,7 @@
 //   - 状态查看页面：Token 有效期、应用名、创建时间、Cookie 有效性
 //   - Token 剩余不足 30 天自动提醒
 //   - 独立接口：setToken / setCookie / setTokenAndCookie / clearToken / clearCookie
+//   - 凭据校验：三个请求并行 + 会话内 5 分钟缓存
 //
 // 单条导入
 //   - 搜索动画/漫画/游戏，抓取信息生成笔记
@@ -20,20 +21,21 @@
 //
 // 批量导入
 //   - 按收藏状态批量拉取动画并生成笔记
-//   - 目录选择下拉列表（记住上次选择）
+//   - 目录选择下拉列表（记住上次选择），支持上一步
 //   - 勾选页面选择要生成的作品（默认全选，支持全选/全不选/反选/上一步）
 //   - 收藏结果缓存，切换收藏类型不重复拉取
 //   - 支持中断按钮，随时停止
 //   - 并发预拉取 + 内容 hash 去重 + 分类预览 + 确认执行
+//   - 预览窗口支持勾选（取消勾选即跳过该项目）
+//   - hash 查重时会扫描子目录（含状态子目录），避免重复生成
 //   - 批量完成后询问是否按观看状态整理笔记
 //
 // 整理
 //   - organizeBangumiNotes：扫描笔记，按「观看状态」移动到对应子目录
 //   - 支持三种模式：仅根目录 / 含子目录 / 仅子目录
-//   - 移动前用多选窗口让用户勾选要移动的文件（默认全选，可取消）
+//   - 移动前用多选窗口让用户勾选要移动的文件
 //   - 已在正确位置的文件不进入候选
 //   - 目标同名文件保护，自动跳过
-//   - 独立命令 organizeBangumiNotesMenu（先选目录和模式）
 //
 // 技术细节
 //   - HTML 页面请求只走 Cookie，API 请求只走 Token
@@ -56,6 +58,10 @@ const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
 const DEFAULT_SCORE_IF_EMPTY = "";
 const TOKEN_WARNING_DAYS = 30;
 const BATCH_CONCURRENCY = 4;
+const CRED_CHECK_CACHE_MS = 5 * 60 * 1000;
+
+// ========== 会话内凭据校验缓存 ==========
+let LAST_CRED_CHECK = { at: 0, token: "", cookieOk: false };
 
 // ========== 收藏状态映射 ==========
 const COLLECTION_TYPE_MAP = {
@@ -717,7 +723,6 @@ class BangumiMultiSelectDialog {
         this.cancelText = options.cancelText || '取消';
         this.backButtonText = options.backButtonText || '';
         this.confirmColor = options.confirmColor || '#4caf50';
-        // ★ 支持自定义默认勾选
         this.selected = new Set(
             Array.isArray(options.defaultSelected)
                 ? options.defaultSelected
@@ -1313,6 +1318,8 @@ class BangumiCredentialsDialog {
             persistCookie(cleanedCookie);
         }
 
+        LAST_CRED_CHECK = { at: 0, token: "", cookieOk: false };
+
         const parts = [];
         if (this.tokenValid) parts.push(`Token ✅（${this.tokenUsername}）`);
         if (this.cookieValid) parts.push('Cookie ✅');
@@ -1565,15 +1572,25 @@ class BangumiStatusDialog {
     }
 }
 
-// ============================== ★ 预览分类弹窗 ==============================
+// ============================== ★ 预览分类弹窗（支持勾选） ==============================
 class BangumiPreviewDialog {
     constructor(options = {}) {
         this.title = options.title || '准备生成笔记';
         this.items = options.items || [];
+        this.confirmText = options.confirmText || '✅ 开始生成';
+        this.cancelText = options.cancelText || '❌ 取消';
+        this.confirmColor = options.confirmColor || '#4caf50';
+        this.selected = new Set(
+            this.items
+                .filter(it => it.action === 'new' || it.action === 'overwrite')
+                .map(it => it.id)
+        );
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
         this.escHandler = null;
+        this.countEl = null;
+        this.checkboxEls = null;
     }
 
     openAndWait() {
@@ -1594,6 +1611,24 @@ class BangumiPreviewDialog {
             this.overlay.parentNode.removeChild(this.overlay);
         }
         if (this.resolveFn) this.resolveFn(result);
+    }
+
+    _getOperableItems() {
+        return this.items.filter(it => it.action === 'new' || it.action === 'overwrite');
+    }
+
+    updateCount() {
+        if (this.countEl) {
+            const total = this._getOperableItems().length;
+            this.countEl.textContent = `已选 ${this.selected.size} / ${total}`;
+        }
+    }
+
+    _refreshCheckboxes() {
+        if (!this.checkboxEls) return;
+        for (const [id, cb] of this.checkboxEls) {
+            cb.checked = this.selected.has(id);
+        }
     }
 
     render() {
@@ -1637,7 +1672,7 @@ class BangumiPreviewDialog {
         panel.appendChild(h2);
 
         const summary = document.createElement('div');
-        summary.style.cssText = 'font-size: 0.92em; margin-bottom: 12px; line-height: 1.7;';
+        summary.style.cssText = 'font-size: 0.92em; margin-bottom: 10px; line-height: 1.7;';
         summary.appendChild(this._makeSummaryLine('➕ 新增', groups.new.length, '#2e7d32'));
         summary.appendChild(this._makeSummaryLine('📝 覆盖', groups.overwrite.length, '#e65100'));
         summary.appendChild(this._makeSummaryLine('⏭️ 跳过（内容未变）', groups.skip.length, '#616161'));
@@ -1645,6 +1680,43 @@ class BangumiPreviewDialog {
             summary.appendChild(this._makeSummaryLine('❌ 分析失败', groups.error.length, '#c62828'));
         }
         panel.appendChild(summary);
+
+        const toolbar = document.createElement('div');
+        toolbar.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex: 0 0 auto;';
+
+        const selectAllBtn = this._makeSmallButton('全选', () => {
+            this.selected = new Set(this._getOperableItems().map(it => it.id));
+            this._refreshCheckboxes();
+            this.updateCount();
+        });
+        toolbar.appendChild(selectAllBtn);
+
+        const deselectAllBtn = this._makeSmallButton('全不选', () => {
+            this.selected.clear();
+            this._refreshCheckboxes();
+            this.updateCount();
+        });
+        toolbar.appendChild(deselectAllBtn);
+
+        const invertBtn = this._makeSmallButton('反选', () => {
+            const operables = this._getOperableItems();
+            const newSelected = new Set();
+            for (const it of operables) {
+                if (!this.selected.has(it.id)) newSelected.add(it.id);
+            }
+            this.selected = newSelected;
+            this._refreshCheckboxes();
+            this.updateCount();
+        });
+        toolbar.appendChild(invertBtn);
+
+        const countEl = document.createElement('div');
+        countEl.style.cssText = 'margin-left: auto; color: var(--text-muted, #888); font-size: 0.9em;';
+        countEl.textContent = `已选 ${this.selected.size} / ${this._getOperableItems().length}`;
+        this.countEl = countEl;
+        toolbar.appendChild(countEl);
+
+        panel.appendChild(toolbar);
 
         const listBox = document.createElement('div');
         listBox.style.cssText = [
@@ -1660,17 +1732,19 @@ class BangumiPreviewDialog {
             'font-size: 0.88em',
         ].join(';');
 
+        this.checkboxEls = new Map();
+
         if (groups.overwrite.length > 0) {
-            listBox.appendChild(this._makeSection('📝 将覆盖', groups.overwrite, '#e65100'));
+            listBox.appendChild(this._makeSection('📝 将覆盖', groups.overwrite, '#e65100', 'overwrite'));
         }
         if (groups.new.length > 0) {
-            listBox.appendChild(this._makeSection('➕ 将新增', groups.new, '#2e7d32'));
+            listBox.appendChild(this._makeSection('➕ 将新增', groups.new, '#2e7d32', 'new'));
         }
         if (groups.skip.length > 0) {
-            listBox.appendChild(this._makeSection('⏭️ 将跳过', groups.skip, '#616161'));
+            listBox.appendChild(this._makeSection('⏭️ 将跳过', groups.skip, '#616161', 'skip'));
         }
         if (groups.error.length > 0) {
-            listBox.appendChild(this._makeSection('❌ 分析失败', groups.error, '#c62828'));
+            listBox.appendChild(this._makeSection('❌ 分析失败', groups.error, '#c62828', 'error'));
         }
 
         panel.appendChild(listBox);
@@ -1678,20 +1752,22 @@ class BangumiPreviewDialog {
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; flex: 0 0 auto;';
 
-        const cancelBtn = this._makeButton('❌ 取消', () => this.finish(false), '#757575');
+        const cancelBtn = this._makeButton(this.cancelText, () => this.finish(null), '#757575');
         btnRow.appendChild(cancelBtn);
 
-        const confirmBtn = this._makeButton('✅ 开始生成', () => this.finish(true), '#4caf50');
+        const confirmBtn = this._makeButton(this.confirmText, () => {
+            this.finish(Array.from(this.selected));
+        }, this.confirmColor);
         confirmBtn.style.fontWeight = '600';
         btnRow.appendChild(confirmBtn);
 
         panel.appendChild(btnRow);
 
         overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) this.finish(false);
+            if (e.target === overlay) this.finish(null);
         });
         this.escHandler = (e) => {
-            if (e.key === 'Escape') this.finish(false);
+            if (e.key === 'Escape') this.finish(null);
         };
         document.addEventListener('keydown', this.escHandler);
 
@@ -1708,7 +1784,7 @@ class BangumiPreviewDialog {
         return line;
     }
 
-    _makeSection(title, items, color) {
+    _makeSection(title, items, color, action) {
         const sec = document.createElement('div');
         sec.style.cssText = 'margin-bottom: 10px;';
         const head = document.createElement('div');
@@ -1716,14 +1792,61 @@ class BangumiPreviewDialog {
         head.style.cssText = `color: ${color}; font-weight: 600; margin-bottom: 4px;`;
         sec.appendChild(head);
 
+        const operable = (action === 'new' || action === 'overwrite');
+
         for (const it of items) {
-            const row = document.createElement('div');
-            row.style.cssText = 'padding: 2px 0 2px 14px; color: var(--text-normal, #333);';
-            row.textContent = '· ' + it.label;
-            row.title = it.label;
+            const row = document.createElement('label');
+            row.style.cssText = [
+                'display: flex', 'align-items: flex-start', 'gap: 8px',
+                'padding: 3px 4px 3px 14px',
+                'border-radius: 4px',
+                'cursor: ' + (operable ? 'pointer' : 'default'),
+                'opacity: ' + (operable ? '1' : '0.65'),
+            ].join(';');
+            if (operable) {
+                row.onmouseenter = () => { row.style.background = 'var(--background-modifier-hover, #eee)'; };
+                row.onmouseleave = () => { row.style.background = 'transparent'; };
+            }
+
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = this.selected.has(it.id);
+            cb.disabled = !operable;
+            cb.style.cssText = 'cursor: ' + (operable ? 'pointer' : 'not-allowed') + '; flex: 0 0 auto; margin-top: 3px;';
+            cb.onchange = () => {
+                if (cb.checked) this.selected.add(it.id);
+                else this.selected.delete(it.id);
+                this.updateCount();
+            };
+            row.appendChild(cb);
+            this.checkboxEls.set(it.id, cb);
+
+            const label = document.createElement('span');
+            label.textContent = it.label;
+            label.style.cssText = 'flex: 1; word-break: break-all;';
+            label.title = it.label;
+            row.appendChild(label);
+
             sec.appendChild(row);
         }
         return sec;
+    }
+
+    _makeSmallButton(text, onClick) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 5px 12px', 'cursor: pointer',
+            'border-radius: 5px',
+            'background: var(--background-secondary, #eee)',
+            'color: var(--text-normal, #333)',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'font-size: 0.85em',
+        ].join(';');
+        btn.onmouseenter = () => { btn.style.background = 'var(--background-modifier-hover, #ddd)'; };
+        btn.onmouseleave = () => { btn.style.background = 'var(--background-secondary, #eee)'; };
+        btn.onclick = onClick;
+        return btn;
     }
 
     _makeButton(text, onClick, bgColor) {
@@ -1744,7 +1867,7 @@ class BangumiPreviewDialog {
     }
 }
 
-// ============================== ★ 目录选择弹窗 ==============================
+// ============================== ★ 目录选择弹窗（支持上一步） ==============================
 class BangumiFolderSelectDialog {
     constructor(options = {}) {
         this.title = options.title || '选择输出目录';
@@ -1752,6 +1875,7 @@ class BangumiFolderSelectDialog {
         this.defaultValue = options.defaultValue || '';
         this.showModeOption = options.showModeOption === true;
         this.defaultMode = options.defaultMode || 'shallow';
+        this.backButtonText = options.backButtonText || '';
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
@@ -1881,7 +2005,6 @@ class BangumiFolderSelectDialog {
             }
         };
 
-        // ★ 扫描模式：卡片式单选
         let modeSelect = null;
         if (this.showModeOption) {
             const modeLabel = document.createElement('div');
@@ -1890,21 +2013,9 @@ class BangumiFolderSelectDialog {
             panel.appendChild(modeLabel);
 
             const modes = [
-                {
-                    value: 'shallow',
-                    title: '仅根目录',
-                    desc: '只处理目录下的直接文件，已在子目录里的笔记不参与整理',
-                },
-                {
-                    value: 'recursive',
-                    title: '含子目录',
-                    desc: '递归处理该目录下所有文件，包括所有子目录里的笔记',
-                },
-                {
-                    value: 'subfolders-only',
-                    title: '仅子目录',
-                    desc: '只处理子文件夹内的文件，目录下的直接文件不动',
-                },
+                { value: 'shallow', title: '仅根目录', desc: '只处理目录下的直接文件，已在子目录里的笔记不参与整理' },
+                { value: 'recursive', title: '含子目录', desc: '递归处理该目录下所有文件，包括所有子目录里的笔记' },
+                { value: 'subfolders-only', title: '仅子目录', desc: '只处理子文件夹内的文件，目录下的直接文件不动' },
             ];
 
             const radioGroup = document.createElement('div');
@@ -1962,8 +2073,6 @@ class BangumiFolderSelectDialog {
                 radio.onchange = () => {
                     if (radio.checked) {
                         currentMode = m.value;
-                        radios.forEach(r => refreshStyle.call(null));
-                        // 刷新所有卡片的样式
                         radios.forEach(r => {
                             const parent = r.parentElement;
                             if (r.checked) {
@@ -1986,10 +2095,21 @@ class BangumiFolderSelectDialog {
         }
 
         const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;';
+        btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: space-between; align-items: center; gap: 10px;';
+
+        const leftGroup = document.createElement('div');
+        leftGroup.style.cssText = 'display: flex; gap: 10px;';
+        if (this.backButtonText) {
+            const backBtn = this._makeButton(this.backButtonText, () => this.finish(BACK_SIGNAL), '#607d8b');
+            leftGroup.appendChild(backBtn);
+        }
+        btnRow.appendChild(leftGroup);
+
+        const rightGroup = document.createElement('div');
+        rightGroup.style.cssText = 'display: flex; gap: 10px;';
 
         const cancelBtn = this._makeButton('❌ 取消', () => this.finish(null), '#757575');
-        btnRow.appendChild(cancelBtn);
+        rightGroup.appendChild(cancelBtn);
 
         const confirmBtn = this._makeButton('✅ 确定', () => {
             const folder = (input.value || "").trim().replace(/^\/+|\/+$/g, '');
@@ -2000,8 +2120,9 @@ class BangumiFolderSelectDialog {
             }
         }, '#4caf50');
         confirmBtn.style.fontWeight = '600';
-        btnRow.appendChild(confirmBtn);
+        rightGroup.appendChild(confirmBtn);
 
+        btnRow.appendChild(rightGroup);
         panel.appendChild(btnRow);
 
         overlay.addEventListener('click', (e) => {
@@ -2179,33 +2300,56 @@ class BangumiListConfirmDialog {
     }
 }
 
-// ============================== ★ 统一凭据保障 ==============================
+// ============================== ★ 统一凭据保障（并行 + 会话内缓存） ==============================
 async function ensureCredentials() {
-    let tokenOk = false;
-    let cookieOk = false;
-    let tokenUsername = "";
+    const hasToken = !!(USER_TOKEN && USER_TOKEN.trim());
+    const hasCookie = !!(USER_COOKIE && USER_COOKIE.trim());
 
-    if (USER_TOKEN && USER_TOKEN.trim()) {
-        tokenUsername = await validateAccessToken(USER_TOKEN);
-        tokenOk = !!tokenUsername;
-        if (!tokenOk) {
-            clearPersistedToken();
-            USER_TOKEN = "";
-            USER_NAME = "";
-        }
+    const now = Date.now();
+    if (now - LAST_CRED_CHECK.at < CRED_CHECK_CACHE_MS
+        && USER_TOKEN
+        && USER_TOKEN === LAST_CRED_CHECK.token) {
+        const secAgo = Math.floor((now - LAST_CRED_CHECK.at) / 1000);
+        log(`[凭据校验] 命中缓存（${secAgo} 秒前校验通过）`);
+        return true;
     }
 
-    if (USER_COOKIE && USER_COOKIE.trim()) {
-        cookieOk = await checkCookieLoginOnly();
+    const [tokenUsername, cookieOk, tokenExpiry] = await Promise.all([
+        hasToken ? validateAccessToken(USER_TOKEN) : Promise.resolve(""),
+        hasCookie ? checkCookieLoginOnly() : Promise.resolve(false),
+        hasToken ? getTokenExpiryInfo() : Promise.resolve(null),
+    ]);
+
+    const tokenOk = !!tokenUsername;
+    if (!tokenOk && hasToken) {
+        clearPersistedToken();
+        USER_TOKEN = "";
+        USER_NAME = "";
     }
 
-    const tokenPart = tokenOk ? `Token ✅（${tokenUsername}）` : "Token ❌";
-    const cookiePart = cookieOk ? "Cookie ✅" : "Cookie ❌";
+    const tokenPart = tokenOk
+        ? `Token ✅（${tokenUsername}）`
+        : (hasToken ? "Token ❌" : "Token ➖");
+    const cookiePart = cookieOk
+        ? "Cookie ✅"
+        : (hasCookie ? "Cookie ❌" : "Cookie ➖");
     new Notice(`凭据校验：${tokenPart} | ${cookiePart}`, 4500);
     log(`[凭据校验] tokenOk=${tokenOk} cookieOk=${cookieOk}`);
 
+    if (tokenExpiry && tokenExpiry.ok) {
+        if (tokenExpiry.remainingSec <= 0) {
+            new Notice(`⚠️ Token 已过期，请尽快重新生成。\n${tokenExpiry.description}`, 8000);
+        } else if (tokenExpiry.remainingSec / 86400 < TOKEN_WARNING_DAYS) {
+            new Notice(`⚠️ Token 剩余不足 ${TOKEN_WARNING_DAYS} 天。\n${tokenExpiry.description}`, 8000);
+        }
+    }
+
     if (tokenOk) {
-        await checkTokenExpiryWarning();
+        LAST_CRED_CHECK = {
+            at: Date.now(),
+            token: USER_TOKEN,
+            cookieOk,
+        };
         return true;
     }
 
@@ -2248,6 +2392,8 @@ async function ensureBatchCredentials() {
 // ============================== ★ 独立接口：查看 / 设置 / 清理 ==============================
 
 async function showCredentials() {
+    LAST_CRED_CHECK = { at: 0, token: "", cookieOk: false };
+
     while (true) {
         const hasToken = !!(USER_TOKEN && USER_TOKEN.trim());
         const hasCookie = !!(USER_COOKIE && USER_COOKIE.trim());
@@ -2331,6 +2477,7 @@ async function clearToken() {
 
     clearPersistedToken();
     USER_TOKEN = "";
+    LAST_CRED_CHECK = { at: 0, token: "", cookieOk: false };
     new Notice("✅ 已清除 Access Token。", 4000);
     log("[clearToken] Token 已清除");
     return true;
@@ -2356,6 +2503,7 @@ async function clearCookie() {
 
     clearPersistedCookie();
     USER_COOKIE = "";
+    LAST_CRED_CHECK = { at: 0, token: "", cookieOk: false };
     new Notice("✅ 已清除 Cookie。", 4000);
     log("[clearCookie] Cookie 已清除");
     return true;
@@ -2510,6 +2658,70 @@ function computeInfoHash(Info) {
     return String(h);
 }
 
+function isInStatusDir(filePath, root, statusDirs) {
+    const rel = root ? filePath.slice(root.length + 1) : filePath;
+    const firstSlash = rel.indexOf('/');
+    if (firstSlash === -1) return false;
+    const topDir = rel.slice(0, firstSlash);
+    return statusDirs.has(topDir);
+}
+
+/**
+ * 扫描 targetFolder 下所有笔记（含子目录），构建 basename -> TFile 索引
+ * 优先使用状态子目录里的版本（更可能是最新整理过的）
+ */
+function buildNoteIndex(targetFolder) {
+    const root = (targetFolder || '').replace(/^\/+|\/+$/g, '');
+    const rootPrefix = root ? root + '/' : '';
+    const map = new Map();
+    const statusDirs = new Set(Object.values(COLLECTION_TYPE_MAP));
+
+    const allFiles = app.vault.getMarkdownFiles();
+    for (const f of allFiles) {
+        if (root && !f.path.startsWith(rootPrefix)) continue;
+
+        const basename = f.basename;
+
+        if (map.has(basename)) {
+            const existing = map.get(basename);
+            const existingIsInStatus = isInStatusDir(existing.path, root, statusDirs);
+            const currentIsInStatus = isInStatusDir(f.path, root, statusDirs);
+            if (currentIsInStatus && !existingIsInStatus) {
+                map.set(basename, f);
+            }
+            continue;
+        }
+
+        map.set(basename, f);
+    }
+
+    log(`[索引] ${root || '（Vault 根目录）'} 下扫描到 ${map.size} 篇笔记`);
+    return map;
+}
+
+/**
+ * 从索引里按候选文件名查找已存在的笔记
+ */
+function findExistingNoteFileFromIndex(index, Info) {
+    const candidates = [
+        Info.fileName,
+        Info.CN,
+        Info.name_cn,
+        Info.JP,
+        Info.name,
+    ].filter(Boolean);
+
+    for (const name of candidates) {
+        const file = index.get(name);
+        if (file) return { file, path: file.path };
+    }
+    return null;
+}
+
+/**
+ * 兼容旧接口：直接查文件系统（不含子目录）
+ * 保留以防别处调用
+ */
 function findExistingNoteFile(targetFolder, Info) {
     const candidates = [
         Info.fileName,
@@ -2559,12 +2771,7 @@ function getAllFolders() {
     return folders;
 }
 
-/**
- * 弹出目录选择器
- * @param {boolean} withModeOption - 是否显示「扫描模式」选项
- * @returns {Promise<string|null|{folder:string, mode:string}>}
- */
-async function selectTargetFolder(withModeOption = false) {
+async function selectTargetFolder(withModeOption = false, allowBack = false) {
     const folders = getAllFolders();
     const lastUsed = (() => {
         try { return app?.loadLocalStorage?.(FOLDER_STORAGE_KEY) || ""; }
@@ -2580,10 +2787,12 @@ async function selectTargetFolder(withModeOption = false) {
         defaultValue: lastUsed,
         showModeOption: withModeOption,
         defaultMode: lastMode,
+        backButtonText: allowBack ? '⬅ 上一步' : '',
     });
     const result = await dialog.openAndWait();
 
     if (result === null) return null;
+    if (result === BACK_SIGNAL) return BACK_SIGNAL;
 
     if (withModeOption) {
         try {
@@ -2640,11 +2849,6 @@ function collectCandidateNotes(rootFolder, mode = 'shallow') {
     return result;
 }
 
-/**
- * 整理 Bangumi 笔记
- * @param {string} rootFolder
- * @param {string} mode - 'shallow' | 'recursive' | 'subfolders-only'
- */
 async function organizeBangumiNotes(rootFolder, mode = 'shallow') {
     const root = (rootFolder || '').replace(/^\/+|\/+$/g, '');
     const rootLabel = root || '（Vault 根目录）';
@@ -2676,12 +2880,10 @@ async function organizeBangumiNotes(rootFolder, mode = 'shallow') {
 
         totalBangumi++;
 
-        // ★ 用 basename 而不是 name（name 带 .md 后缀）
         const targetPath = root
             ? `${root}/${status}/${file.basename}.md`
             : `${status}/${file.basename}.md`;
 
-        // 已经在正确位置，不进入候选
         if (file.path === targetPath) continue;
 
         const targetFile = app.vault.getAbstractFileByPath(targetPath);
@@ -2723,7 +2925,6 @@ async function organizeBangumiNotes(rootFolder, mode = 'shallow') {
         ? `\n⚠️ 另有 ${conflictCount} 篇因目标位置已存在同名文件，已自动跳过。`
         : '';
 
-    // ★ 用多选窗口让用户勾选要移动的文件
     const chosenIds = await new BangumiMultiSelectDialog({
         title: '整理 Bangumi 笔记',
         message:
@@ -2846,8 +3047,9 @@ async function bangumiBatch(QuickAddInstance) {
 
     const collectionCache = new Map();
     let chosenSubjects = null;
+    let TARGET_FOLDER = null;
 
-    // ===== 阶段 1：选择收藏类型 + 勾选作品 =====
+    // ===== 阶段 1：选择收藏类型 + 勾选作品 + 选目录 =====
     while (true) {
         const selectedLabels = await QuickAdd.quickAddApi.checkboxPrompt(allLabels, defaultChecked);
         if (!selectedLabels || selectedLabels.length === 0) {
@@ -2923,9 +3125,24 @@ async function bangumiBatch(QuickAddInstance) {
         if (Array.isArray(result) && result.length > 0) {
             const chosenSet = new Set(result);
             chosenSubjects = allSubjects.filter(s => chosenSet.has(s.subject_id));
-            break;
+        } else {
+            new Notice("未选择任何动画，请重新选择或取消。", 4000);
+            continue;
         }
-        new Notice("未选择任何动画，请重新选择或取消。", 4000);
+
+        const folderResult = await selectTargetFolder(false, true);
+
+        if (folderResult === null) {
+            new Notice("已取消，未选择输出目录。", 4000);
+            return;
+        }
+        if (folderResult === BACK_SIGNAL) {
+            log("[目录选择] 用户点击上一步，返回选择作品");
+            chosenSubjects = null;
+            continue;
+        }
+        TARGET_FOLDER = folderResult;
+        break;
     }
 
     if (!chosenSubjects || chosenSubjects.length === 0) {
@@ -2933,15 +3150,12 @@ async function bangumiBatch(QuickAddInstance) {
         return;
     }
 
-    // 选择输出目录
-    const TARGET_FOLDER = await selectTargetFolder();
-    if (TARGET_FOLDER === null) {
-        new Notice("已取消，未选择输出目录。", 4000);
-        return;
-    }
     log(`[批量] 输出目录：${TARGET_FOLDER || "（Vault 根目录）"}`);
 
     // ===== 阶段 2：并发预拉取 + 分类 =====
+    // ★ 构建笔记索引（含子目录），用于 hash 对比
+    const noteIndex = buildNoteIndex(TARGET_FOLDER);
+
     let doneCount = 0;
     let lastNoticeTime = 0;
     const prepared = new Array(chosenSubjects.length);
@@ -2977,7 +3191,8 @@ async function bangumiBatch(QuickAddInstance) {
                     const hash = computeInfoHash(Info);
                     Info.bangumi_hash = hash;
 
-                    const existing = findExistingNoteFile(TARGET_FOLDER, Info);
+                    // ★ 使用索引查找（含子目录）
+                    const existing = findExistingNoteFileFromIndex(noteIndex, Info);
                     const existingHash = existing ? await readExistingHashFromFile(existing.file) : null;
 
                     let action;
@@ -3024,23 +3239,26 @@ async function bangumiBatch(QuickAddInstance) {
         return;
     }
 
-    // ===== 阶段 3：预览 =====
-    const previewItems = prepared.map(p => ({
+    // ===== 阶段 3：预览（可勾选）=====
+    const previewItems = prepared.map((p, idx) => ({
+        id: idx,
         label: p.action === 'error'
             ? `${p.displayName}（${p.errorMsg}）`
             : p.displayName,
         action: p.action,
     }));
 
-    const doProceed = await new BangumiPreviewDialog({
+    const chosenPreviewIds = await new BangumiPreviewDialog({
         title: '准备生成笔记',
         items: previewItems,
     }).openAndWait();
 
-    if (!doProceed) {
+    if (chosenPreviewIds === null) {
         new Notice("已取消，未生成任何笔记。", 4000);
         return;
     }
+
+    const chosenPreviewSet = new Set(chosenPreviewIds);
 
     // ===== 阶段 4：串行生成 =====
     showAbortButton();
@@ -3048,6 +3266,7 @@ async function bangumiBatch(QuickAddInstance) {
     let success = 0;
     let failed = 0;
     let skipped = 0;
+    let userSkipped = 0;
     let aborted = false;
     const failedList = [];
 
@@ -3065,6 +3284,12 @@ async function bangumiBatch(QuickAddInstance) {
             if (p.action === 'error') {
                 failed++;
                 failedList.push(`${p.item.subject_id} ${p.displayName}：${p.errorMsg}`);
+                continue;
+            }
+
+            if (!chosenPreviewSet.has(i)) {
+                userSkipped++;
+                log(`[跳过] 用户取消勾选：${p.displayName}`);
                 continue;
             }
 
@@ -3087,13 +3312,13 @@ async function bangumiBatch(QuickAddInstance) {
         (aborted ? `已中断（用户主动停止）\n\n` : `批量生成完成\n`) +
         `新增/覆盖：${success}\n` +
         `跳过（内容未变）：${skipped}\n` +
+        `用户取消勾选：${userSkipped}\n` +
         `失败：${failed}` +
-        (aborted ? `\n未处理：${prepared.length - success - failed - skipped}` : "") +
+        (aborted ? `\n未处理：${prepared.length - success - failed - skipped - userSkipped}` : "") +
         (failedList.length > 0 ? `\n\n失败列表：\n${failedList.join("\n")}` : "");
     new Notice(summary, 10000);
     log(summary);
 
-    // ★ 询问是否整理笔记
     const organizeChoice = await new BangumiChoiceDialog({
         title: '整理笔记',
         message:
@@ -3652,6 +3877,7 @@ async function resetBangumiAuth() {
     USER_COOKIE = "";
     USER_TOKEN = "";
     USER_NAME = "";
+    LAST_CRED_CHECK = { at: 0, token: "", cookieOk: false };
     new Notice("已清除保存的 Bangumi Cookie 和 Access Token，下次运行会要求重新认证。", 5000);
 }
 
