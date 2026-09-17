@@ -29,8 +29,10 @@
 //
 // 整理
 //   - organizeBangumiNotes：扫描笔记，按「观看状态」移动到对应子目录
-//   - 支持仅扫根目录 / 递归扫子目录两种模式
-//   - 目标同名文件保护，跳过并汇报
+//   - 支持三种模式：仅根目录 / 含子目录 / 仅子目录
+//   - 移动前用多选窗口让用户勾选要移动的文件（默认全选，可取消）
+//   - 已在正确位置的文件不进入候选
+//   - 目标同名文件保护，自动跳过
 //   - 独立命令 organizeBangumiNotesMenu（先选目录和模式）
 //
 // 技术细节
@@ -45,7 +47,7 @@ const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
 const TOKEN_STORAGE_KEY = "bangumi_to_obsidian_access_token";
 const TOKEN_SAVED_AT_KEY = "bangumi_to_obsidian_token_saved_at";
 const FOLDER_STORAGE_KEY = "bangumi_to_obsidian_target_folder";
-const RECURSIVE_STORAGE_KEY = "bangumi_to_obsidian_organize_recursive";
+const MODE_STORAGE_KEY = "bangumi_to_obsidian_organize_mode";
 
 // ========== 模板名常量 ==========
 const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
@@ -591,7 +593,7 @@ class BangumiChoiceDialog {
     constructor(options = {}) {
         this.title = options.title || '选择';
         this.message = options.message || '';
-        this.buttons = options.buttons || [];   // [{ text, value, color }]
+        this.buttons = options.buttons || [];
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
@@ -639,7 +641,7 @@ class BangumiChoiceDialog {
             'border-radius: 10px',
             'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
             'padding: 22px 26px',
-            'width: 580px',
+            'width: 600px',
             'max-width: 92vw',
             'max-height: 88vh',
             'overflow-y: auto',
@@ -715,7 +717,12 @@ class BangumiMultiSelectDialog {
         this.cancelText = options.cancelText || '取消';
         this.backButtonText = options.backButtonText || '';
         this.confirmColor = options.confirmColor || '#4caf50';
-        this.selected = new Set(this.items.map(it => it.id));
+        // ★ 支持自定义默认勾选
+        this.selected = new Set(
+            Array.isArray(options.defaultSelected)
+                ? options.defaultSelected
+                : this.items.map(it => it.id)
+        );
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
@@ -793,7 +800,7 @@ class BangumiMultiSelectDialog {
         if (this.message) {
             const msg = document.createElement('div');
             msg.textContent = this.message;
-            msg.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 12px 0; line-height: 1.5;';
+            msg.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 12px 0; line-height: 1.5; white-space: pre-wrap;';
             panel.appendChild(msg);
         }
 
@@ -851,7 +858,7 @@ class BangumiMultiSelectDialog {
         for (const it of this.items) {
             const row = document.createElement('label');
             row.style.cssText = [
-                'display: flex', 'align-items: center', 'gap: 8px',
+                'display: flex', 'align-items: flex-start', 'gap: 8px',
                 'padding: 6px 8px', 'border-radius: 4px', 'cursor: pointer',
                 'font-size: 0.92em',
             ].join(';');
@@ -860,8 +867,8 @@ class BangumiMultiSelectDialog {
 
             const cb = document.createElement('input');
             cb.type = 'checkbox';
-            cb.checked = true;
-            cb.style.cssText = 'cursor: pointer; flex: 0 0 auto;';
+            cb.checked = this.selected.has(it.id);
+            cb.style.cssText = 'cursor: pointer; flex: 0 0 auto; margin-top: 3px;';
             cb.onchange = () => {
                 if (cb.checked) this.selected.add(it.id);
                 else this.selected.delete(it.id);
@@ -871,7 +878,7 @@ class BangumiMultiSelectDialog {
 
             const label = document.createElement('span');
             label.textContent = it.label;
-            label.style.cssText = 'flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+            label.style.cssText = 'flex: 1; word-break: break-all;';
             label.title = it.label;
             row.appendChild(label);
 
@@ -1743,8 +1750,8 @@ class BangumiFolderSelectDialog {
         this.title = options.title || '选择输出目录';
         this.folders = options.folders || [];
         this.defaultValue = options.defaultValue || '';
-        this.showRecursiveOption = options.showRecursiveOption === true;
-        this.defaultRecursive = options.defaultRecursive === true;
+        this.showModeOption = options.showModeOption === true;
+        this.defaultMode = options.defaultMode || 'shallow';
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
@@ -1792,8 +1799,10 @@ class BangumiFolderSelectDialog {
             'border-radius: 10px',
             'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
             'padding: 22px 26px',
-            'width: 540px',
+            'width: 620px',
             'max-width: 92vw',
+            'max-height: 90vh',
+            'overflow-y: auto',
         ].join(';');
         overlay.appendChild(panel);
 
@@ -1803,8 +1812,8 @@ class BangumiFolderSelectDialog {
         panel.appendChild(h2);
 
         const info = document.createElement('p');
-        info.textContent = this.showRecursiveOption
-            ? '选择要整理的根目录，并决定是否扫描其子目录下的笔记。'
+        info.textContent = this.showModeOption
+            ? '选择要整理的根目录，并决定扫描模式。'
             : '批量生成的笔记将保存到此目录（目录不存在时 QuickAdd 会自动创建）。';
         info.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 16px 0; line-height: 1.5;';
         panel.appendChild(info);
@@ -1872,28 +1881,108 @@ class BangumiFolderSelectDialog {
             }
         };
 
-        // ★ 递归扫描选项
-        let recursiveCb = null;
-        if (this.showRecursiveOption) {
-            const row = document.createElement('label');
-            row.style.cssText = [
-                'display: flex', 'align-items: center', 'gap: 8px',
-                'margin-top: 14px', 'padding: 10px 12px',
-                'background: var(--background-secondary, #f8f8f8)',
-                'border-radius: 6px', 'cursor: pointer', 'font-size: 0.9em',
-            ].join(';');
+        // ★ 扫描模式：卡片式单选
+        let modeSelect = null;
+        if (this.showModeOption) {
+            const modeLabel = document.createElement('div');
+            modeLabel.textContent = '扫描模式：';
+            modeLabel.style.cssText = 'font-weight: 600; margin-top: 16px; margin-bottom: 8px;';
+            panel.appendChild(modeLabel);
 
-            recursiveCb = document.createElement('input');
-            recursiveCb.type = 'checkbox';
-            recursiveCb.checked = this.defaultRecursive;
-            recursiveCb.style.cssText = 'cursor: pointer;';
-            row.appendChild(recursiveCb);
+            const modes = [
+                {
+                    value: 'shallow',
+                    title: '仅根目录',
+                    desc: '只处理目录下的直接文件，已在子目录里的笔记不参与整理',
+                },
+                {
+                    value: 'recursive',
+                    title: '含子目录',
+                    desc: '递归处理该目录下所有文件，包括所有子目录里的笔记',
+                },
+                {
+                    value: 'subfolders-only',
+                    title: '仅子目录',
+                    desc: '只处理子文件夹内的文件，目录下的直接文件不动',
+                },
+            ];
 
-            const text = document.createElement('div');
-            text.innerHTML = '<b>扫描子目录</b><br><span style="color: var(--text-muted, #888); font-size: 0.85em;">勾选后，会递归扫描所选目录下所有子目录中的笔记</span>';
-            row.appendChild(text);
+            const radioGroup = document.createElement('div');
+            radioGroup.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
 
-            panel.appendChild(row);
+            const radios = [];
+            let currentMode = this.defaultMode || 'shallow';
+
+            for (const m of modes) {
+                const card = document.createElement('label');
+                card.style.cssText = [
+                    'display: flex', 'align-items: flex-start', 'gap: 10px',
+                    'padding: 10px 12px',
+                    'border: 1px solid var(--background-modifier-border, #ccc)',
+                    'border-radius: 6px',
+                    'cursor: pointer',
+                    'background: var(--background-secondary, #f8f8f8)',
+                    'transition: background .15s, border-color .15s',
+                ].join(';');
+
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'bangumi-organize-mode';
+                radio.value = m.value;
+                radio.checked = (m.value === currentMode);
+                radio.style.cssText = 'margin-top: 3px; flex: 0 0 auto; cursor: pointer;';
+                card.appendChild(radio);
+                radios.push(radio);
+
+                const textWrap = document.createElement('div');
+                textWrap.style.cssText = 'flex: 1; line-height: 1.5;';
+
+                const title = document.createElement('div');
+                title.textContent = m.title;
+                title.style.cssText = 'font-weight: 600; font-size: 0.95em; margin-bottom: 2px;';
+                textWrap.appendChild(title);
+
+                const desc = document.createElement('div');
+                desc.textContent = m.desc;
+                desc.style.cssText = 'color: var(--text-muted, #888); font-size: 0.85em;';
+                textWrap.appendChild(desc);
+
+                card.appendChild(textWrap);
+
+                const refreshStyle = () => {
+                    if (radio.checked) {
+                        card.style.background = 'var(--background-modifier-hover, #eef4ff)';
+                        card.style.borderColor = 'var(--interactive-accent, #2196f3)';
+                    } else {
+                        card.style.background = 'var(--background-secondary, #f8f8f8)';
+                        card.style.borderColor = 'var(--background-modifier-border, #ccc)';
+                    }
+                };
+
+                radio.onchange = () => {
+                    if (radio.checked) {
+                        currentMode = m.value;
+                        radios.forEach(r => refreshStyle.call(null));
+                        // 刷新所有卡片的样式
+                        radios.forEach(r => {
+                            const parent = r.parentElement;
+                            if (r.checked) {
+                                parent.style.background = 'var(--background-modifier-hover, #eef4ff)';
+                                parent.style.borderColor = 'var(--interactive-accent, #2196f3)';
+                            } else {
+                                parent.style.background = 'var(--background-secondary, #f8f8f8)';
+                                parent.style.borderColor = 'var(--background-modifier-border, #ccc)';
+                            }
+                        });
+                    }
+                };
+
+                refreshStyle();
+                radioGroup.appendChild(card);
+            }
+
+            panel.appendChild(radioGroup);
+            modeSelect = { get value() { return currentMode; } };
         }
 
         const btnRow = document.createElement('div');
@@ -1904,8 +1993,8 @@ class BangumiFolderSelectDialog {
 
         const confirmBtn = this._makeButton('✅ 确定', () => {
             const folder = (input.value || "").trim().replace(/^\/+|\/+$/g, '');
-            if (this.showRecursiveOption) {
-                this.finish({ folder, recursive: recursiveCb.checked });
+            if (this.showModeOption && modeSelect) {
+                this.finish({ folder, mode: modeSelect.value });
             } else {
                 this.finish(folder);
             }
@@ -2472,37 +2561,34 @@ function getAllFolders() {
 
 /**
  * 弹出目录选择器
- * @param {boolean} withRecursiveOption - 是否显示「扫描子目录」选项
- * @returns {Promise<string|null|{folder:string, recursive:boolean}>}
- *   - 未启用递归选项：返回 folder 字符串或 null
- *   - 启用递归选项：返回 { folder, recursive } 或 null
+ * @param {boolean} withModeOption - 是否显示「扫描模式」选项
+ * @returns {Promise<string|null|{folder:string, mode:string}>}
  */
-async function selectTargetFolder(withRecursiveOption = false) {
+async function selectTargetFolder(withModeOption = false) {
     const folders = getAllFolders();
     const lastUsed = (() => {
         try { return app?.loadLocalStorage?.(FOLDER_STORAGE_KEY) || ""; }
         catch (e) { return ""; }
     })();
-    const lastRecursive = (() => {
-        try { return app?.loadLocalStorage?.(RECURSIVE_STORAGE_KEY) === 'true'; }
-        catch (e) { return false; }
+    const lastMode = (() => {
+        try { return app?.loadLocalStorage?.(MODE_STORAGE_KEY) || 'shallow'; }
+        catch (e) { return 'shallow'; }
     })();
 
     const dialog = new BangumiFolderSelectDialog({
         folders,
         defaultValue: lastUsed,
-        showRecursiveOption: withRecursiveOption,
-        defaultRecursive: lastRecursive,
+        showModeOption: withModeOption,
+        defaultMode: lastMode,
     });
     const result = await dialog.openAndWait();
 
     if (result === null) return null;
 
-    if (withRecursiveOption) {
-        // result = { folder, recursive }
+    if (withModeOption) {
         try {
             app?.saveLocalStorage?.(FOLDER_STORAGE_KEY, result.folder);
-            app?.saveLocalStorage?.(RECURSIVE_STORAGE_KEY, result.recursive ? 'true' : 'false');
+            app?.saveLocalStorage?.(MODE_STORAGE_KEY, result.mode);
         } catch (e) {}
         return result;
     } else {
@@ -2525,12 +2611,7 @@ async function readFrontmatterField(file, field) {
     }
 }
 
-/**
- * 收集候选笔记文件
- * @param {string} rootFolder
- * @param {boolean} recursive - true 时递归收集所有子目录里的笔记
- */
-function collectCandidateNotes(rootFolder, recursive = false) {
+function collectCandidateNotes(rootFolder, mode = 'shallow') {
     const root = (rootFolder || '').replace(/^\/+|\/+$/g, '');
     const isRoot = root === '';
     const prefix = isRoot ? '' : root + '/';
@@ -2538,39 +2619,45 @@ function collectCandidateNotes(rootFolder, recursive = false) {
 
     const allFiles = app.vault.getMarkdownFiles();
     for (const f of allFiles) {
+        let relPath;
         if (isRoot) {
-            if (recursive) {
-                result.push(f);
-            } else {
-                if (f.path.includes('/')) continue;
-                result.push(f);
-            }
+            relPath = f.path;
         } else {
             if (!f.path.startsWith(prefix)) continue;
-            if (recursive) {
-                result.push(f);
-            } else {
-                const relative = f.path.slice(prefix.length);
-                if (relative.includes('/')) continue;
-                result.push(f);
-            }
+            relPath = f.path.slice(prefix.length);
+        }
+
+        const isDirectChild = !relPath.includes('/');
+
+        if (mode === 'shallow') {
+            if (isDirectChild) result.push(f);
+        } else if (mode === 'recursive') {
+            result.push(f);
+        } else if (mode === 'subfolders-only') {
+            if (!isDirectChild) result.push(f);
         }
     }
     return result;
 }
 
 /**
- * 整理 Bangumi 笔记：按「观看状态」移动文件到对应子目录
- * @param {string} rootFolder - 根目录（相对 vault 路径，可空 = Vault 根）
- * @param {boolean} recursive - 是否递归扫描子目录
+ * 整理 Bangumi 笔记
+ * @param {string} rootFolder
+ * @param {string} mode - 'shallow' | 'recursive' | 'subfolders-only'
  */
-async function organizeBangumiNotes(rootFolder, recursive = false) {
+async function organizeBangumiNotes(rootFolder, mode = 'shallow') {
     const root = (rootFolder || '').replace(/^\/+|\/+$/g, '');
     const rootLabel = root || '（Vault 根目录）';
 
-    new Notice(`正在扫描 ${rootLabel}${recursive ? '（含子目录）' : ''} 下的笔记…`, 3000);
+    const modeLabel = {
+        'shallow': '仅根目录',
+        'recursive': '含子目录',
+        'subfolders-only': '仅子目录',
+    }[mode] || '仅根目录';
 
-    const candidates = collectCandidateNotes(root, recursive);
+    new Notice(`正在扫描 ${rootLabel}（${modeLabel}）下的笔记…`, 3000);
+
+    const candidates = collectCandidateNotes(root, mode);
 
     if (candidates.length === 0) {
         new Notice(`${rootLabel} 下没有可整理的笔记。`, 4000);
@@ -2579,6 +2666,7 @@ async function organizeBangumiNotes(rootFolder, recursive = false) {
 
     const toMove = [];
     let totalBangumi = 0;
+    let movableIdx = 0;
 
     for (const file of candidates) {
         const status = await readFrontmatterField(file, '观看状态');
@@ -2588,29 +2676,29 @@ async function organizeBangumiNotes(rootFolder, recursive = false) {
 
         totalBangumi++;
 
+        // ★ 用 basename 而不是 name（name 带 .md 后缀）
         const targetPath = root
-            ? `${root}/${status}/${file.name}.md`
-            : `${status}/${file.name}.md`;
+            ? `${root}/${status}/${file.basename}.md`
+            : `${status}/${file.basename}.md`;
 
+        // 已经在正确位置，不进入候选
         if (file.path === targetPath) continue;
 
         const targetFile = app.vault.getAbstractFileByPath(targetPath);
         if (targetFile && targetFile.path !== file.path) {
             toMove.push({
-                file,
-                status,
-                targetPath,
+                file, status, targetPath,
                 conflict: true,
-                label: `${file.name}  →  ${status}/  （目标已存在同名文件）`,
+                movableId: null,
+                label: `${file.basename}  →  ${status}/  （目标已存在同名文件）`,
             });
             continue;
         }
 
         toMove.push({
-            file,
-            status,
-            targetPath,
+            file, status, targetPath,
             conflict: false,
+            movableId: movableIdx++,
             label: `${file.path}  →  ${targetPath}`,
         });
     }
@@ -2620,36 +2708,52 @@ async function organizeBangumiNotes(rootFolder, recursive = false) {
         return { moved: 0, skipped: totalBangumi, failed: 0 };
     }
 
-    const movableCount = toMove.filter(x => !x.conflict).length;
-    const conflictCount = toMove.length - movableCount;
+    const movableItems = toMove
+        .filter(x => !x.conflict)
+        .map(x => ({ id: x.movableId, label: x.label }));
 
-    const doProceed = await new BangumiListConfirmDialog({
+    const conflictCount = toMove.length - movableItems.length;
+
+    if (movableItems.length === 0) {
+        new Notice(`扫描完成：${totalBangumi} 篇均因目标存在同名文件无法移动。`, 5000);
+        return { moved: 0, skipped: totalBangumi, failed: conflictCount };
+    }
+
+    const conflictNote = conflictCount > 0
+        ? `\n⚠️ 另有 ${conflictCount} 篇因目标位置已存在同名文件，已自动跳过。`
+        : '';
+
+    // ★ 用多选窗口让用户勾选要移动的文件
+    const chosenIds = await new BangumiMultiSelectDialog({
         title: '整理 Bangumi 笔记',
         message:
-            `扫描到 ${totalBangumi} 篇笔记，其中 ${movableCount} 篇位置需要调整。` +
-            (recursive ? `\n模式：递归扫描子目录` : `\n模式：仅扫描根目录`) +
-            (conflictCount > 0 ? `\n⚠️ 另有 ${conflictCount} 篇因目标位置已存在同名文件，将被跳过。` : ''),
-        items: toMove.map(x => x.label),
+            `扫描到 ${totalBangumi} 篇笔记，其中 ${movableItems.length} 篇需要移动。\n` +
+            `模式：${modeLabel}${conflictNote}\n\n` +
+            `取消勾选可跳过本次移动。`,
+        items: movableItems,
         confirmText: '✅ 开始移动',
         cancelText: '❌ 取消',
         confirmColor: '#4caf50',
     }).openAndWait();
 
-    if (!doProceed) {
+    if (chosenIds === null) {
         new Notice("已取消整理。", 4000);
         return { moved: 0, skipped: 0, failed: 0 };
+    }
+
+    const chosenSet = new Set(chosenIds);
+    const finalList = toMove.filter(x => !x.conflict && chosenSet.has(x.movableId));
+
+    if (finalList.length === 0) {
+        new Notice("未勾选任何文件，已取消整理。", 4000);
+        return { moved: 0, skipped: totalBangumi, failed: 0 };
     }
 
     let moved = 0;
     let failed = 0;
     const failedList = [];
 
-    for (const m of toMove) {
-        if (m.conflict) {
-            failed++;
-            failedList.push(`${m.file.name}：目标位置已存在同名文件`);
-            continue;
-        }
+    for (const m of finalList) {
         try {
             const folderPath = root ? `${root}/${m.status}` : m.status;
             if (!app.vault.getAbstractFileByPath(folderPath)) {
@@ -2660,32 +2764,34 @@ async function organizeBangumiNotes(rootFolder, recursive = false) {
             log(`[整理] 移动：${m.file.path} → ${m.targetPath}`);
         } catch (e) {
             failed++;
-            failedList.push(`${m.file.name}：${e.message}`);
+            failedList.push(`${m.file.basename}：${e.message}`);
             log(`[整理] 失败：${m.file.path} - ${e.message}`);
         }
     }
 
+    const userSkipped = movableItems.length - finalList.length;
+    const totalSkipped = totalBangumi - moved - failed;
+
     const summary =
         `整理完成\n` +
         `移动：${moved}\n` +
+        `用户取消勾选：${userSkipped}\n` +
+        `其他跳过：${totalSkipped - userSkipped}\n` +
         `失败：${failed}` +
         (failedList.length > 0 ? `\n\n失败列表：\n${failedList.join('\n')}` : '');
     new Notice(summary, 8000);
     log(summary);
 
-    return { moved, skipped: totalBangumi - toMove.length, failed };
+    return { moved, skipped: totalSkipped, failed };
 }
 
-/**
- * 独立命令：先选目录+模式，再整理
- */
 async function organizeBangumiNotesMenu() {
     const result = await selectTargetFolder(true);
     if (result === null) {
         new Notice("已取消。", 4000);
         return;
     }
-    await organizeBangumiNotes(result.folder, result.recursive);
+    await organizeBangumiNotes(result.folder, result.mode);
 }
 
 // ============================== 批量中断按钮 ==============================
@@ -2987,7 +3093,7 @@ async function bangumiBatch(QuickAddInstance) {
     new Notice(summary, 10000);
     log(summary);
 
-    // ★ 询问是否整理笔记（三按钮：跳过 / 整理根目录 / 整理含子目录）
+    // ★ 询问是否整理笔记
     const organizeChoice = await new BangumiChoiceDialog({
         title: '整理笔记',
         message:
@@ -2996,15 +3102,14 @@ async function bangumiBatch(QuickAddInstance) {
             `移动到对应的子目录（想看 / 在看 / 看过 / 搁置 / 抛弃）？`,
         buttons: [
             { text: '跳过', value: 'skip', color: '#757575' },
-            { text: '📁 整理根目录', value: 'shallow', color: '#4caf50' },
-            { text: '📂 整理含子目录', value: 'recursive', color: '#2196f3' },
+            { text: '📁 仅根目录', value: 'shallow', color: '#4caf50' },
+            { text: '📂 含子目录', value: 'recursive', color: '#2196f3' },
+            { text: '📁 仅子目录', value: 'subfolders-only', color: '#ff9800' },
         ],
     }).openAndWait();
 
-    if (organizeChoice === 'shallow') {
-        await organizeBangumiNotes(TARGET_FOLDER, false);
-    } else if (organizeChoice === 'recursive') {
-        await organizeBangumiNotes(TARGET_FOLDER, true);
+    if (organizeChoice && organizeChoice !== 'skip') {
+        await organizeBangumiNotes(TARGET_FOLDER, organizeChoice);
     }
 }
 
