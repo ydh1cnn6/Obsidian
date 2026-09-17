@@ -5,24 +5,31 @@
 //特别鸣谢：@ 鬼头明里单推人 及热心观众
 // 感谢 @北漠海 的优化思路及部分代码~
 //modify: 莺空_栩白（解决章节目录部分展示不全问题、动画导演概率不展示问题）
-//modify: 增加登录检测 + 浏览器跳转 + 粘贴 Cookie 自动提取拼接流程
-//modify: Cookie 持久化到 Obsidian 本地存储，重启后无需重新粘贴
-//modify: 优先使用 Bangumi 个人访问令牌（Access Token）认证，令牌无效/未配置时回退 Cookie 流程
-//modify: 新增批量模式（bangumiBatch）
-//modify: HTML 页面请求只走 Cookie，API 请求只走 Token
-//modify: getParagraph 双分支：优先 API 已看集合，无则回退 HTML <small>
-//modify: ★ 纯 DOM 凭据弹窗
-//modify: ★ fetchWatchedEpisodes 路径改为 /v0/users/-/collections/{subject_id}/episodes
-//modify: ★ requestGet 合并 COMMON_HEADERS 与 customHeaders
-//modify: ★ BangumiMultiSelectDialog 勾选弹窗
-//modify: ★ 多选弹窗支持「上一步」返回重选收藏类型；收藏结果缓存避免重复拉取
-//modify: ★ 新增 clearToken / clearCookie / setToken / setCookie / setTokenAndCookie 接口
-//modify: ★ showCredentials 状态查看页面
-//modify: ★ getTokenExpiryInfo 正确区分 expires 是时间戳还是剩余秒数
-//modify: ★ Token 即将过期时（<30 天）自动提醒
-//modify: ★ debugAuthState 同时输出控制台日志和弹窗状态
-//modify: ★ extractBaseInfo 输出 name / name_cn 字段；getAnimeByurl 支持 API 名优先
-//modify: ★【本次】token_status 解析 name 字段（应用名），在状态窗口展示
+// ===== 已实现功能 =====
+// 认证
+//   - 支持 Access Token（优先）与 Cookie（兜底）双认证
+//   - 凭据持久化到 Obsidian 本地存储，重启免登录
+//   - 纯 DOM 凭据弹窗，支持校验/保存/编辑
+//   - 状态查看页面：Token 有效期（调用官方 token_status）、应用名、创建时间、Cookie 有效性
+//   - Token 剩余不足 30 天自动提醒
+//   - 独立接口：setToken / setCookie / setTokenAndCookie / clearToken / clearCookie
+//
+// 单条导入
+//   - 搜索动画/漫画/游戏，抓取信息生成笔记
+//   - 动画按 API 已看集合勾选章节（失败回退 HTML <small>）
+//
+// 批量导入
+//   - 按收藏状态批量拉取动画并生成笔记
+//   - 勾选页面选择要生成的作品（默认全选，支持全选/全不选/反选/上一步）
+//   - 收藏结果缓存，切换收藏类型不重复拉取
+//   - 支持中断按钮，随时停止
+//
+// 技术细节
+//   - HTML 页面请求只走 Cookie，API 请求只走 Token
+//   - fetchWatchedEpisodes 使用 /v0/users/-/collections/{subject_id}/episodes
+//   - requestGet 合并 COMMON_HEADERS 与 customHeaders
+//   - extractBaseInfo 输出 name / name_cn 字段（兼容 API 名优先）
+//   - 状态窗口使用并行预加载，打开即时渲染
 
 // ========== 存储键名 ==========
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
@@ -319,7 +326,7 @@ async function getTokenExpiryInfo(token) {
                         expiryTs = Date.now() + remainingSec * 1000;
                     }
 
-                    // ★ 解析 info 字段（JSON 字符串）
+                    // 解析 info 字段（JSON 字符串）
                     let name = null;
                     let createdAt = null;
                     if (data.info) {
@@ -1175,13 +1182,19 @@ class BangumiCredentialsDialog {
     }
 }
 
-// ============================== ★ 状态查看弹窗 ==============================
+// ============================== ★ 状态查看弹窗（预加载） ==============================
 class BangumiStatusDialog {
     constructor(options = {}) {
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
         this.escHandler = null;
+        // 预加载数据
+        this.hasToken = !!options.hasToken;
+        this.hasCookie = !!options.hasCookie;
+        this.tokenInfo = options.tokenInfo || null;
+        this.tokenUsername = options.tokenUsername || null;
+        this.cookieOk = options.cookieOk;   // boolean
     }
 
     openAndWait() {
@@ -1253,8 +1266,9 @@ class BangumiStatusDialog {
 
         const tokenInfoEl = document.createElement('div');
         tokenInfoEl.style.cssText = 'font-size: 0.9em; line-height: 1.7;';
-        tokenInfoEl.textContent = '查询中…';
         tokenSec.appendChild(tokenInfoEl);
+
+        this._renderTokenInfo(tokenInfoEl);
 
         panel.appendChild(tokenSec);
 
@@ -1274,8 +1288,9 @@ class BangumiStatusDialog {
 
         const cookieInfoEl = document.createElement('div');
         cookieInfoEl.style.cssText = 'font-size: 0.9em; line-height: 1.7;';
-        cookieInfoEl.textContent = '查询中…';
         cookieSec.appendChild(cookieInfoEl);
+
+        this._renderCookieInfo(cookieInfoEl);
 
         panel.appendChild(cookieSec);
 
@@ -1286,21 +1301,15 @@ class BangumiStatusDialog {
         const leftGroup = document.createElement('div');
         leftGroup.style.cssText = 'display: flex; gap: 10px;';
 
-        const editBtn = this._makeButton('✏️ 编辑凭据', () => {
-            this.finish('edit');
-        }, '#2196f3');
+        const editBtn = this._makeButton('✏️ 编辑凭据', () => this.finish('edit'), '#2196f3');
         leftGroup.appendChild(editBtn);
 
-        const refreshBtn = this._makeButton('🔄 刷新', () => {
-            this.finish('refresh');
-        }, '#607d8b');
+        const refreshBtn = this._makeButton('🔄 刷新', () => this.finish('refresh'), '#607d8b');
         leftGroup.appendChild(refreshBtn);
 
         btnRow.appendChild(leftGroup);
 
-        const closeBtn = this._makeButton('关闭', () => {
-            this.finish('close');
-        }, '#757575');
+        const closeBtn = this._makeButton('关闭', () => this.finish('close'), '#757575');
         btnRow.appendChild(closeBtn);
 
         panel.appendChild(btnRow);
@@ -1315,76 +1324,77 @@ class BangumiStatusDialog {
         document.addEventListener('keydown', this.escHandler);
 
         document.body.appendChild(overlay);
+    }
 
-        (async () => {
-            if (USER_TOKEN && USER_TOKEN.trim()) {
-                const username = await validateAccessToken(USER_TOKEN);
-                const expiryInfo = await getTokenExpiryInfo();
-                const tokenDisplay = USER_TOKEN.slice(0, 8) + "..." + USER_TOKEN.slice(-6);
+    _renderTokenInfo(el) {
+        if (!this.hasToken) {
+            el.textContent = '❌ 未设置';
+            el.style.color = 'var(--text-muted, #888)';
+            return;
+        }
 
-                tokenInfoEl.innerHTML = '';
-                tokenInfoEl.appendChild(this._makeLine('状态', username ? `✅ 有效` : `❌ 无效`));
-                if (username) {
-                    tokenInfoEl.appendChild(this._makeLine('用户', username));
-                }
-                // ★ 新增：应用名
-                if (expiryInfo.name) {
-                    tokenInfoEl.appendChild(this._makeLine('应用', expiryInfo.name));
-                }
-				// ★ 新增：Token 创建时间
-				if (expiryInfo.createdAt) {
-					const createdStr = (() => {
-						try { return new Date(expiryInfo.createdAt).toLocaleString(); }
-						catch (e) { return expiryInfo.createdAt; }
-					})();
-					tokenInfoEl.appendChild(this._makeLine('创建', createdStr));
-				}
-                // client_id
-                if (expiryInfo.clientId) {
-                    tokenInfoEl.appendChild(this._makeLine('Client ID', String(expiryInfo.clientId)));
-                }
-                // scope
-                if (expiryInfo.scope) {
-                    tokenInfoEl.appendChild(this._makeLine('Scope', String(expiryInfo.scope)));
-                }
+        const info = this.tokenInfo;
+        const username = this.tokenUsername;
+        const tokenDisplay = USER_TOKEN.slice(0, 8) + "..." + USER_TOKEN.slice(-6);
 
-                const expiryLine = this._makeLine('到期', expiryInfo.description);
-                if (expiryInfo.ok) {
-                    const days = expiryInfo.remainingSec / 86400;
-                    if (expiryInfo.remainingSec <= 0) {
-                        expiryLine.style.color = '#c62828';
-                        expiryLine.style.fontWeight = '600';
-                    } else if (days < TOKEN_WARNING_DAYS) {
-                        expiryLine.style.color = '#e65100';
-                        expiryLine.style.fontWeight = '600';
-                    } else {
-                        expiryLine.style.color = '#2e7d32';
-                    }
+        let statusText = '✅ 有效';
+        if (!username) statusText = '❌ 无效';
+        el.appendChild(this._makeLine('状态', statusText));
+
+        if (username) el.appendChild(this._makeLine('用户', username));
+        if (info && info.name) el.appendChild(this._makeLine('应用', info.name));
+        if (info && info.createdAt) {
+            let createdStr;
+            try { createdStr = new Date(info.createdAt).toLocaleString(); }
+            catch (e) { createdStr = info.createdAt; }
+            el.appendChild(this._makeLine('创建', createdStr));
+        }
+        if (info && info.clientId) {
+            el.appendChild(this._makeLine('Client ID', String(info.clientId)));
+        }
+        if (info && info.scope) {
+            el.appendChild(this._makeLine('Scope', String(info.scope)));
+        }
+
+        if (info && info.description) {
+            const expiryLine = this._makeLine('到期', info.description);
+            if (info.ok) {
+                const days = info.remainingSec / 86400;
+                if (info.remainingSec <= 0) {
+                    expiryLine.style.color = '#c62828';
+                    expiryLine.style.fontWeight = '600';
+                } else if (days < TOKEN_WARNING_DAYS) {
+                    expiryLine.style.color = '#e65100';
+                    expiryLine.style.fontWeight = '600';
+                } else {
+                    expiryLine.style.color = '#2e7d32';
                 }
-                tokenInfoEl.appendChild(expiryLine);
-                tokenInfoEl.appendChild(this._makeLine('令牌', tokenDisplay));
-            } else {
-                tokenInfoEl.textContent = '❌ 未设置';
-                tokenInfoEl.style.color = 'var(--text-muted, #888)';
             }
+            el.appendChild(expiryLine);
+        }
 
-            if (USER_COOKIE && USER_COOKIE.trim()) {
-                const ok = await checkCookieLoginOnly();
-                const cookieDisplay = USER_COOKIE.length > 60
-                    ? USER_COOKIE.slice(0, 60) + "..."
-                    : USER_COOKIE;
-                cookieInfoEl.innerHTML = '';
-                cookieInfoEl.appendChild(this._makeLine('状态', ok ? '✅ 有效' : '❌ 无效'));
-                cookieInfoEl.appendChild(this._makeLine('长度', `${USER_COOKIE.length} 字符`));
-                const preview = document.createElement('div');
-                preview.style.cssText = 'margin-top: 6px; font-family: monospace; font-size: 0.8em; word-break: break-all; color: var(--text-muted, #888);';
-                preview.textContent = cookieDisplay;
-                cookieInfoEl.appendChild(preview);
-            } else {
-                cookieInfoEl.textContent = '❌ 未设置';
-                cookieInfoEl.style.color = 'var(--text-muted, #888)';
-            }
-        })();
+        el.appendChild(this._makeLine('令牌', tokenDisplay));
+    }
+
+    _renderCookieInfo(el) {
+        if (!this.hasCookie) {
+            el.textContent = '❌ 未设置';
+            el.style.color = 'var(--text-muted, #888)';
+            return;
+        }
+
+        const ok = this.cookieOk === true;
+        const cookieDisplay = USER_COOKIE.length > 60
+            ? USER_COOKIE.slice(0, 60) + "..."
+            : USER_COOKIE;
+
+        el.appendChild(this._makeLine('状态', ok ? '✅ 有效' : '❌ 无效'));
+        el.appendChild(this._makeLine('长度', `${USER_COOKIE.length} 字符`));
+
+        const preview = document.createElement('div');
+        preview.style.cssText = 'margin-top: 6px; font-family: monospace; font-size: 0.8em; word-break: break-all; color: var(--text-muted, #888);';
+        preview.textContent = cookieDisplay;
+        el.appendChild(preview);
     }
 
     _makeLine(label, value) {
@@ -1488,17 +1498,41 @@ async function ensureBatchCredentials() {
 // ============================== ★ 独立接口：查看 / 设置 / 清理 ==============================
 
 async function showCredentials() {
-    await checkTokenExpiryWarning();
-
     while (true) {
-        const action = await new BangumiStatusDialog().openAndWait();
+        const hasToken = !!(USER_TOKEN && USER_TOKEN.trim());
+        const hasCookie = !!(USER_COOKIE && USER_COOKIE.trim());
+
+        // ★ 并行预加载：三个请求同时发出
+        const [tokenInfo, tokenUsername, cookieOk] = await Promise.all([
+            hasToken ? getTokenExpiryInfo() : Promise.resolve(null),
+            hasToken ? validateAccessToken(USER_TOKEN) : Promise.resolve(null),
+            hasCookie ? checkCookieLoginOnly() : Promise.resolve(null),
+        ]);
+
+        // 到期提醒（用已经拿到的数据，不再重复请求）
+        if (tokenInfo && tokenInfo.ok) {
+            if (tokenInfo.remainingSec <= 0) {
+                new Notice(`⚠️ Token 已过期，请尽快重新生成。\n${tokenInfo.description}`, 8000);
+            } else if (tokenInfo.remainingSec / 86400 < TOKEN_WARNING_DAYS) {
+                new Notice(`⚠️ Token 剩余不足 ${TOKEN_WARNING_DAYS} 天。\n${tokenInfo.description}`, 8000);
+            }
+        }
+
+        // 打开窗口，传入预加载数据
+        const action = await new BangumiStatusDialog({
+            hasToken,
+            hasCookie,
+            tokenInfo,
+            tokenUsername,
+            cookieOk,
+        }).openAndWait();
+
         if (action === 'edit') {
             const dialog = new BangumiCredentialsDialog({ requireBoth: false });
             await dialog.openAndWait();
             continue;
         }
         if (action === 'refresh') {
-            await checkTokenExpiryWarning();
             continue;
         }
         break;
