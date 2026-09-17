@@ -4,7 +4,7 @@
 //参考作者：@Lumos Cuman 永皓yh 风吹走记忆 
 //特别鸣谢：@ 鬼头明里单推人 及热心观众
 // 感谢 @北漠海 的优化思路及部分代码~
-//modify: 莺空_栩白（解决章节目录部分展示不全问题【非登录状态：章节全量展示；登录状态：勾选已观看章节】、动画导演概率不展示问题）
+//modify: 莺空_栩白（解决章节目录部分展示不全问题、动画导演概率不展示问题）
 //modify: 增加登录检测 + 浏览器跳转 + 粘贴 Cookie 自动提取拼接流程
 //modify: Cookie 持久化到 Obsidian 本地存储，重启后无需重新粘贴
 //modify: 优先使用 Bangumi 个人访问令牌（Access Token）认证，令牌无效/未配置时回退 Cookie 流程
@@ -14,10 +14,15 @@
 //modify: HTML 页面请求只走 Cookie，API 请求只走 Token（修复 400）
 //modify: Token 认证成功后保留 Cookie，使 HTML 页面请求亦可用作兜底
 //modify: getParagraph 双分支：优先 API 已看集合，无则回退 HTML <small>
+//modify: ★ Token 有效但 Cookie 为空时主动提示补 Cookie；新增 updateCookieOnly / updateTokenOnly 独立命令
+//modify: ★ 批量导入前置校验：Token 和 Cookie 必须同时可用，否则弹出修复选择或取消
+//modify: ★ 新增 promptAndUpdateCredentials() 一体化凭据界面（Token + Cookie 同时输入/校验/保存）
+//modify: ★ 普通和批量导入开始前统一走 ensureCredentials() 凭据保障流程
 
 // ========== 存储键名 ==========
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
 const TOKEN_STORAGE_KEY = "bangumi_to_obsidian_access_token";
+const TOKEN_SAVED_AT_KEY = "bangumi_to_obsidian_token_saved_at";
 
 // ========== 模板名常量 ==========
 const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
@@ -62,6 +67,16 @@ let USER_TOKEN = (() => {
     return "";
 })();
 
+let TOKEN_SAVED_AT = (() => {
+    try {
+        const saved = app?.loadLocalStorage?.(TOKEN_SAVED_AT_KEY);
+        if (saved && typeof saved === "string" && saved.trim()) {
+            return parseInt(saved.trim(), 10) || 0;
+        }
+    } catch (e) {}
+    return 0;
+})();
+
 let USER_NAME = "";
 let BATCH_ABORT = false;
 const ABORT_BTN_ID = "bangumi-batch-abort-btn";
@@ -89,6 +104,10 @@ module.exports = bangumi;
 module.exports.bangumiBatch = bangumiBatch;
 module.exports.resetBangumiAuth = resetBangumiAuth;
 module.exports.resetBangumiCookie = resetBangumiAuth;
+module.exports.updateCookieOnly = updateCookieOnly;
+module.exports.updateTokenOnly = updateTokenOnly;
+module.exports.ensureBatchCredentials = ensureBatchCredentials;
+module.exports.debugAuthState = debugAuthState;
 
 let QuickAdd;
 let pageNum = 1;
@@ -101,7 +120,6 @@ async function requestGet(url, customHeaders = null) {
         const isApiRequest = finalURL.hostname === 'api.bgm.tv';
 
         if (isApiRequest) {
-            // API 请求：优先用 Token
             if (USER_TOKEN && USER_TOKEN.trim()) {
                 headers['Authorization'] = `Bearer ${USER_TOKEN.trim()}`;
                 delete headers['Cookie'];
@@ -109,7 +127,6 @@ async function requestGet(url, customHeaders = null) {
                 headers['Cookie'] = USER_COOKIE;
             }
         } else {
-            // HTML 页面：只走 Cookie，绝不发送 Bearer Token
             headers['Cookie'] = USER_COOKIE;
             delete headers['Authorization'];
         }
@@ -196,6 +213,30 @@ async function checkBangumiLogin() {
     return !!doc.querySelector('#badgeUserPanel') && !doc.querySelector('a[href="/login"]');
 }
 
+async function checkCookieLoginOnly() {
+    if (!USER_COOKIE || !USER_COOKIE.trim()) return false;
+    try {
+        const res = await request({
+            url: "https://bgm.tv/",
+            method: "GET",
+            cache: "no-cache",
+            headers: {
+                ...COMMON_HEADERS,
+                "Cookie": USER_COOKIE,
+            },
+        });
+        if (!res) return false;
+        const doc = parseHtmlToDom(res);
+        const hasPanel = !!doc.querySelector('#badgeUserPanel');
+        const hasLoginLink = !!doc.querySelector('a[href="/login"]');
+        log(`[Cookie校验] badgeUserPanel=${hasPanel}, loginLink=${hasLoginLink}`);
+        return hasPanel && !hasLoginLink;
+    } catch (e) {
+        log(`Cookie 校验失败: ${e.message}`);
+        return false;
+    }
+}
+
 async function openBangumiLoginPage() {
     const loginUrl = "https://bgm.tv/login";
     try {
@@ -247,6 +288,28 @@ function isValidBangumiCookie(cookieStr) {
     return requiredKeys.every(k => cookieStr.includes(k + "="));
 }
 
+/**
+ * 估算 Token 剩余天数
+ * Bangumi PAT 有效期约 1 年（365 天）
+ * 由于 API 不返回过期时间，根据保存时间推算
+ * @returns {string} 人类可读的剩余天数描述
+ */
+function getTokenExpiryEstimate() {
+    if (!TOKEN_SAVED_AT || !USER_TOKEN || !USER_TOKEN.trim()) {
+        return "未记录保存时间";
+    }
+    const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+    const elapsed = Date.now() - TOKEN_SAVED_AT;
+    const remaining = ONE_YEAR_MS - elapsed;
+    if (remaining <= 0) {
+        return "⚠️ 估算已过期（超过 1 年）";
+    }
+    const days = Math.floor(remaining / (24 * 60 * 60 * 1000));
+    const savedDate = new Date(TOKEN_SAVED_AT);
+    const expiryDate = new Date(TOKEN_SAVED_AT + ONE_YEAR_MS);
+    return `约剩余 ${days} 天（保存于 ${savedDate.toLocaleDateString()}，估算到期 ${expiryDate.toLocaleDateString()}）`;
+}
+
 // ============================== 凭据持久化 ==============================
 function persistCookie(cookieStr) {
     try {
@@ -272,6 +335,8 @@ function persistToken(token) {
     try {
         if (app?.saveLocalStorage) {
             app.saveLocalStorage(TOKEN_STORAGE_KEY, token);
+            app.saveLocalStorage(TOKEN_SAVED_AT_KEY, String(Date.now()));
+            TOKEN_SAVED_AT = Date.now();
         }
     } catch (e) {
         log(`保存 Token 到本地存储失败：${e.message}`);
@@ -282,6 +347,8 @@ function clearPersistedToken() {
     try {
         if (app?.saveLocalStorage) {
             app.saveLocalStorage(TOKEN_STORAGE_KEY, "");
+            app.saveLocalStorage(TOKEN_SAVED_AT_KEY, "");
+            TOKEN_SAVED_AT = 0;
         }
     } catch (e) {
         log(`清除本地存储 Token 失败：${e.message}`);
@@ -312,116 +379,331 @@ async function readClipboardTextAsync() {
     return "";
 }
 
-// ============================== 凭据输入流程 ==============================
-async function promptAndUpdateToken() {
-    const fromClipboard = await readClipboardTextAsync();
-    const message = "Bangumi 个人访问令牌（Access Token）\n在 https://next.bgm.tv/demo/access-token 生成，约 1 年有效。\n优先使用令牌认证，可省去频繁获取 Cookie。";
-    const placeholder = "在此粘贴你的 Access Token";
-    const clipboardIsToken = fromClipboard && fromClipboard.length > 20 && !fromClipboard.includes(' ') && !fromClipboard.includes('=') && !fromClipboard.includes(';');
+// ============================== ★ 核心：一体化凭据界面 ==============================
+/**
+ * 一体化凭据界面
+ * 使用 QuickAdd requestInputs 在一个表单中同时收集 Token 和 Cookie
+ * 已保存的值会自动填充，用户可直接点「下一步」保存
+ * @param {boolean} [requireBoth=true] - 是否要求 Token 和 Cookie 都有效
+ * @returns {Promise<boolean>} true=凭据可用，false=用户取消
+ */
+async function promptAndUpdateCredentials(requireBoth = true) {
+    // 读取剪贴板，尝试自动识别
+    const clipboardText = await readClipboardTextAsync();
+    let clipboardToken = "";
+    let clipboardCookie = "";
 
-    while (true) {
-        const defaultValue = (clipboardIsToken ? fromClipboard : "") || placeholder;
-        let input = await QuickAdd.quickAddApi.inputPrompt(message, defaultValue);
-        if (input === null) return false;
-        if (!input || input.trim() === "") {
-            const retry = await QuickAdd.quickAddApi.yesNoPrompt("输入为空", "未输入 Token，是否重新输入？");
-            if (!retry) return false;
-            continue;
+    if (clipboardText) {
+        const cleanedCookie = sanitizeCookieInput(clipboardText);
+        if (isValidBangumiCookie(cleanedCookie)) {
+            clipboardCookie = cleanedCookie;
+        } else if (clipboardText.length > 20 && !clipboardText.includes(' ') &&
+                   !clipboardText.includes('=') && !clipboardText.includes(';')) {
+            clipboardToken = clipboardText.trim();
         }
-        const token = input.trim();
+    }
+
+    // 预填已有值
+    const defaultToken = clipboardToken || USER_TOKEN || "";
+    const defaultCookie = clipboardCookie || USER_COOKIE || "";
+
+    // 状态提示
+    const tokenStatus = defaultToken
+        ? (USER_TOKEN ? `已保存 | ${getTokenExpiryEstimate()}` : "剪贴板检测到")
+        : "未设置";
+    const cookieStatus = defaultCookie
+        ? (USER_COOKIE ? "已保存" : "剪贴板检测到")
+        : "未设置";
+
+    let formValues;
+    try {
+        formValues = await QuickAdd.quickAddApi.requestInputs([
+            {
+                id: "token",
+                label: "Access Token",
+                type: "text",
+                placeholder: "在此粘贴 Access Token（在 next.bgm.tv/demo/access-token 生成）",
+                defaultValue: defaultToken,
+                description: `状态：${tokenStatus}`,
+            },
+            {
+                id: "cookie",
+                label: "Cookie",
+                type: "textarea",
+                placeholder: "chii_auth=...; chii_sec_id=...; chii_sid=...",
+                defaultValue: defaultCookie,
+                description: `状态：${cookieStatus}`,
+            },
+            {
+                id: "action",
+                label: "操作",
+                type: "dropdown",
+                options: ["✅ 下一步（校验并保存）", "🔍 仅校验不保存", "❌ 取消"],
+                defaultValue: "✅ 下一步（校验并保存）",
+                description: "校验通过后自动保存并继续",
+            },
+        ]);
+    } catch (e) {
+        // 用户关闭了表单
+        new Notice("凭据输入已取消。", 4000);
+        log("[凭据界面] 用户关闭表单");
+        return false;
+    }
+
+    const inputToken = (formValues.token || "").trim();
+    const inputCookie = (formValues.cookie || "").trim();
+    const action = formValues.action || "✅ 下一步（校验并保存）";
+
+    if (action.includes("取消")) {
+        new Notice("操作已取消。", 4000);
+        return false;
+    }
+
+    const shouldSave = action.includes("保存");
+
+    // ---------- 校验 Token ----------
+    let tokenOk = false;
+    let tokenUsername = "";
+    if (inputToken) {
         new Notice("正在校验 Token…", 3000);
-        const username = await validateAccessToken(token);
-        if (!username) {
-            const retry = await QuickAdd.quickAddApi.yesNoPrompt(
-                "Token 无效",
-                "该 Token 校验失败（可能已过期或复制不完整）。\n是否重新输入？"
-            );
-            if (!retry) return false;
-            continue;
-        }
-        USER_TOKEN = token;
-        persistToken(token);
-        // ★ 保留 Cookie 作为 HTML 页面请求的兜底
-        new Notice(`Token 校验成功 ✅ 用户: ${username}\n已保存，下次运行无需重新输入。`, 5000);
-        return true;
+        tokenUsername = await validateAccessToken(inputToken);
+        tokenOk = !!tokenUsername;
     }
-}
 
-async function promptAndUpdateCookie() {
-    const fromClipboard = await readClipboardTextAsync();
-    if (fromClipboard) {
-        const cleanedFromClipboard = sanitizeCookieInput(fromClipboard);
-        if (isValidBangumiCookie(cleanedFromClipboard)) {
-            USER_COOKIE = cleanedFromClipboard;
-            persistCookie(cleanedFromClipboard);
-            new Notice("已从剪贴板读取并保存 Cookie，正在校验登录状态…", 3000);
-            return true;
-        }
+    // ---------- 校验 Cookie ----------
+    let cookieOk = false;
+    let tempCookie = inputCookie;
+    if (tempCookie) {
+        // 临时设置 USER_COOKIE 以便校验
+        const originalCookie = USER_COOKIE;
+        USER_COOKIE = tempCookie;
+        new Notice("正在校验 Cookie…", 3000);
+        cookieOk = await checkCookieLoginOnly();
+        // 恢复原值（如果之后要保存会重新设置）
+        USER_COOKIE = originalCookie;
     }
-    let clipboardText = fromClipboard || "";
-    const message = fromClipboard
-        ? "剪贴板内容未识别到 chii_auth，请手动粘贴完整 Cookie"
-        : "未从剪贴板读到 Cookie，请手动粘贴";
-    const placeholder = "chii_sec_id=...; chii_theme=light; chii_cookietime=2592000; chii_auth=...; chii_sid=...";
 
-    while (true) {
-        const defaultValue = clipboardText || placeholder;
-        let input = await QuickAdd.quickAddApi.inputPrompt(message, defaultValue);
-        if (input === null) {
-            const retry = await QuickAdd.quickAddApi.yesNoPrompt("已取消", "未输入 Cookie，是否重新输入？");
-            if (!retry) return false;
-            continue;
-        }
-        if (!input || input.trim() === "") {
-            const retry = await QuickAdd.quickAddApi.yesNoPrompt("输入为空", "请手动粘贴 Cookie 后再点确认。是否重新输入？");
-            if (!retry) return false;
-            continue;
-        }
-        const cleaned = sanitizeCookieInput(input);
-        if (!isValidBangumiCookie(cleaned)) {
-            new Notice("Cookie 缺少必要字段（至少包含 chii_auth=...），请重新复制粘贴。", 5000);
-            clipboardText = cleaned || input;
-            continue;
-        }
-        USER_COOKIE = cleaned;
-        persistCookie(cleaned);
-        new Notice("已更新 Cookie 并保存，正在校验登录状态…", 3000);
-        return true;
-    }
-}
+    // ---------- 构建结果摘要 ----------
+    const lines = [];
+    lines.push(`Token：${tokenOk ? `✅ 有效（用户：${tokenUsername}）` : (inputToken ? "❌ 无效" : "➖ 未填写")}`);
+    lines.push(`Cookie：${cookieOk ? "✅ 有效" : (inputCookie ? "❌ 无效" : "➖ 未填写")}`);
 
-async function ensureAuthenticated() {
-    let logged = await checkBangumiLogin();
-    while (!logged) {
-        clearPersistedCookie();
-        clearPersistedToken();
-        USER_COOKIE = "";
-        USER_TOKEN = "";
-        USER_NAME = "";
+    // 判断是否满足要求
+    const allGood = requireBoth ? (tokenOk && cookieOk) : (tokenOk || cookieOk);
 
-        const useToken = await QuickAdd.quickAddApi.yesNoPrompt(
-            "Bangumi 未登录",
-            "检测到未登录或凭据已失效。\n\n" +
-            "推荐使用「个人访问令牌（Access Token）」——一次配置，约 1 年有效。\n\n" +
-            "选择「是」：打开浏览器生成 Access Token（推荐）\n" +
-            "选择「否」：打开浏览器登录后复制 Cookie"
-        );
-
-        if (useToken) {
-            await openBangumiTokenPage();
-            new Notice("已打开 Bangumi Token 生成页。请在浏览器中登录并生成个人令牌，然后复制令牌回到 Obsidian。", 8000);
-            const tokenUpdated = await promptAndUpdateToken();
-            if (!tokenUpdated) throw new Error("未更新 Token，已中止");
+    if (allGood) {
+        // 保存
+        if (shouldSave) {
+            if (tokenOk && inputToken) {
+                USER_TOKEN = inputToken;
+                USER_NAME = tokenUsername;
+                persistToken(inputToken);
+            }
+            if (cookieOk && tempCookie) {
+                USER_COOKIE = tempCookie;
+                persistCookie(tempCookie);
+            }
+            lines.push("");
+            lines.push("💾 已保存。");
+            if (USER_TOKEN) {
+                lines.push(`Token 过期估算：${getTokenExpiryEstimate()}`);
+            }
         } else {
-            await openBangumiLoginPage();
-            new Notice("已打开 Bangumi 登录页。登录完成后，请复制浏览器中的 Cookie，随后回到 Obsidian。", 8000);
-            const cookieUpdated = await promptAndUpdateCookie();
-            if (!cookieUpdated) throw new Error("未更新 Cookie，已中止");
+            lines.push("");
+            lines.push("（仅校验，未保存）");
         }
-
-        logged = await checkBangumiLogin();
-        if (!logged) new Notice("凭据校验失败，请检查是否复制完整或令牌是否有效。", 5000);
+        new Notice(lines.join("\n"), 6000);
+        log(`[凭据界面] 通过。tokenOk=${tokenOk} cookieOk=${cookieOk} saved=${shouldSave}`);
+        return true;
     }
+
+    // 不满足要求 → 弹出修复选项
+    lines.push("");
+    lines.push(requireBoth
+        ? "批量导入需要 Token 和 Cookie 同时有效。"
+        : "需要至少一个凭据有效。");
+    lines.push("请选择下一步操作：");
+
+    const fixOptions = [
+        { label: "🔑 重新输入 Access Token", value: "retry_token" },
+        { label: "🍪 重新输入 Cookie", value: "retry_cookie" },
+        { label: "🔑🍪 两个都重新输入", value: "retry_both" },
+        { label: "🔗 打开 Token 生成页", value: "open_token" },
+        { label: "🔗 打开 Cookie 登录页", value: "open_cookie" },
+        { label: "❌ 取消", value: "cancel" },
+    ];
+
+    const choice = await QuickAdd.quickAddApi.suggester(
+        fixOptions.map(o => o.label),
+        fixOptions.map(o => o.value)
+    );
+
+    if (!choice || choice === "cancel") {
+        new Notice("凭据未通过校验，操作已取消。", 5000);
+        return false;
+    }
+
+    if (choice === "open_token") {
+        await openBangumiTokenPage();
+        new Notice("已打开 Token 生成页。生成后回到 Obsidian 重新运行。", 8000);
+        return false;
+    }
+    if (choice === "open_cookie") {
+        await openBangumiLoginPage();
+        new Notice("已打开登录页。登录后复制 Cookie，回到 Obsidian 重新运行。", 8000);
+        return false;
+    }
+
+    // 递归重试
+    if (choice === "retry_token") {
+        // 清空 cookie 预填，强制只关注 token
+        USER_COOKIE = "";
+    } else if (choice === "retry_cookie") {
+        USER_TOKEN = "";
+    }
+    // retry_both → 都不清，表单会预填已有值
+    return promptAndUpdateCredentials(requireBoth);
+}
+
+/**
+ * 普通/批量导入前的统一凭据保障
+ * 先尝试静默校验已有凭据；如果都有效则直接通过
+ * 否则弹出一体化凭据界面
+ * @param {boolean} requireBoth - 是否要求 Token 和 Cookie 都有效
+ * @returns {Promise<boolean>}
+ */
+async function ensureCredentials(requireBoth = true) {
+    // 静默校验：Token 和 Cookie 是否都已有效
+    let tokenOk = false;
+    let cookieOk = false;
+
+    if (USER_TOKEN && USER_TOKEN.trim()) {
+        const username = await validateAccessToken(USER_TOKEN);
+        tokenOk = !!username;
+        if (!tokenOk) {
+            log("Token 已失效，将弹出凭据界面");
+            clearPersistedToken();
+            USER_TOKEN = "";
+            USER_NAME = "";
+        }
+    }
+
+    if (USER_COOKIE && USER_COOKIE.trim()) {
+        cookieOk = await checkCookieLoginOnly();
+        if (!cookieOk) {
+            log("Cookie 已失效");
+        }
+    }
+
+    // 判断是否需要弹表单
+    const alreadyGood = requireBoth ? (tokenOk && cookieOk) : (tokenOk || cookieOk);
+    if (alreadyGood) {
+        // 已有有效凭据，给个简短提示
+        const parts = [];
+        if (tokenOk) parts.push(`Token✅（${USER_NAME}）`);
+        if (cookieOk) parts.push("Cookie✅");
+        if (USER_TOKEN) parts.push(getTokenExpiryEstimate());
+        new Notice(`凭据有效：${parts.join(" | ")}`, 4000);
+        log(`[凭据保障] 已有有效凭据，跳过输入。tokenOk=${tokenOk} cookieOk=${cookieOk}`);
+        return true;
+    }
+
+    // 需要用户输入
+    const missing = [];
+    if (!tokenOk) missing.push("Token");
+    if (!cookieOk) missing.push("Cookie");
+    log(`[凭据保障] 缺少：${missing.join("、")}，弹出凭据界面`);
+    new Notice(`需要补充：${missing.join("、")}`, 4000);
+
+    return promptAndUpdateCredentials(requireBoth);
+}
+
+// ============================== 独立命令 ==============================
+async function updateCookieOnly(QuickAddInstance) {
+    QuickAdd = QuickAddInstance;
+
+    if (USER_TOKEN && USER_TOKEN.trim()) {
+        const username = await validateAccessToken(USER_TOKEN);
+        if (username) {
+            USER_NAME = username;
+        } else {
+            clearPersistedToken();
+            USER_TOKEN = "";
+            USER_NAME = "";
+        }
+    }
+
+    await openBangumiLoginPage();
+    new Notice(
+        "已打开 Bangumi 登录页。\n" +
+        "登录后按 F12 → Application → Cookies → https://bgm.tv\n" +
+        "复制 chii_auth、chii_sec_id、chii_sid 等字段，回到 Obsidian 粘贴。",
+        10000
+    );
+
+    const ok = await promptAndUpdateCredentials(false); // 只要求至少一个有效
+    if (!ok) {
+        new Notice("未更新 Cookie，操作已取消。", 4000);
+        return;
+    }
+
+    const valid = await checkCookieLoginOnly();
+    if (valid) {
+        new Notice("Cookie 校验成功 ✅\nHTML 页面请求已可用。", 5000);
+    } else {
+        new Notice("Cookie 已保存，但纯 Cookie 请求未通过校验。可重新运行再试。", 8000);
+    }
+}
+
+async function updateTokenOnly(QuickAddInstance) {
+    QuickAdd = QuickAddInstance;
+
+    if (USER_COOKIE && USER_COOKIE.trim()) {
+        new Notice("当前已有 Cookie，本次只更新 Token，Cookie 会被保留。", 4000);
+    }
+
+    await openBangumiTokenPage();
+    new Notice("已打开 Token 生成页。生成后复制令牌回到 Obsidian。", 8000);
+
+    const ok = await promptAndUpdateCredentials(false);
+    if (!ok) {
+        new Notice("未更新 Token，操作已取消。", 4000);
+        return;
+    }
+
+    new Notice(
+        `Token 已更新 ✅\n用户：${USER_NAME || "（未获取到用户名）"}\n` +
+        `过期估算：${getTokenExpiryEstimate()}\n` +
+        `Cookie 状态：${USER_COOKIE && USER_COOKIE.trim() ? "已保留" : "为空"}`,
+        6000
+    );
+}
+
+// ★ 保留 ensureBatchCredentials 作为兼容入口，内部调用 ensureCredentials
+async function ensureBatchCredentials() {
+    return ensureCredentials(true);
+}
+
+// ============================== 调试 ==============================
+async function debugAuthState() {
+    console.log("=== Bangumi 凭据状态 ===");
+    console.log("Token:", USER_TOKEN ? `已设置 (${USER_TOKEN.slice(0, 8)}...)` : "空");
+    console.log("Token 保存时间:", TOKEN_SAVED_AT ? new Date(TOKEN_SAVED_AT).toLocaleString() : "未知");
+    console.log("Token 过期估算:", getTokenExpiryEstimate());
+    console.log("Cookie:", USER_COOKIE ? `已设置 (${USER_COOKIE.slice(0, 30)}...)` : "空");
+    console.log("USER_NAME:", USER_NAME || "空");
+    try {
+        const cookieOk = await checkCookieLoginOnly();
+        console.log("Cookie 登录态:", cookieOk);
+    } catch (e) {
+        console.log("Cookie 校验异常:", e.message);
+    }
+    return {
+        hasToken: !!USER_TOKEN,
+        hasCookie: !!USER_COOKIE,
+        tokenSavedAt: TOKEN_SAVED_AT,
+        expiryEstimate: getTokenExpiryEstimate(),
+    };
 }
 
 // ============================== 收藏批量拉取 ==============================
@@ -458,22 +740,6 @@ async function fetchAllCollections(subjectType, collectionType) {
     return allItems;
 }
 
-/**
- * 通过 Bangumi API 精确获取用户在指定作品下「已看」的剧集集合
- * 端点：GET /v0/users/{username}/collections/{subjectId}/episodes
- * 返回的 Set 同时包含 episode.id、ep、sort 的字符串形式，便于与 HTML 匹配。
- *
- * Bangumi v0 API 中单集收藏 type 语义：
- *   0 = 未收藏
- *   1 = 想看
- *   2 = 看过
- *   3 = 抛弃
- * 只有 type === 2（看过）才计入已看集合。
- *
- * @param {string} username - 用户名
- * @param {number|string} subjectId - 作品 ID
- * @returns {Promise<Set<string>>} 已看剧集标识集合（字符串）
- */
 async function fetchWatchedEpisodes(username, subjectId) {
     const result = new Set();
     if (!username || !subjectId) return result;
@@ -558,19 +824,9 @@ async function bangumiBatch(QuickAddInstance) {
     pageNum = 1;
     BATCH_ABORT = false;
 
-    await ensureAuthenticated();
-
-    if (!USER_TOKEN || !USER_TOKEN.trim()) {
-        const ok = await QuickAdd.quickAddApi.yesNoPrompt(
-            "需要 Access Token",
-            "批量拉取收藏需要 Access Token。\n是否现在打开 Token 生成页？"
-        );
-        if (!ok) return;
-        await openBangumiTokenPage();
-        new Notice("已打开 Token 生成页。生成后请复制令牌回到 Obsidian。", 8000);
-        const tokenUpdated = await promptAndUpdateToken();
-        if (!tokenUpdated) return;
-    }
+    // ★ 统一凭据保障：Token 和 Cookie 都必须有效
+    const credOk = await ensureCredentials(true);
+    if (!credOk) return;
 
     const username = await getCurrentUsername();
     if (!username) {
@@ -649,7 +905,6 @@ async function bangumiBatch(QuickAddInstance) {
             new Notice(`[${i + 1}/${subjects.length}] 正在处理：${displayName}`, 3000);
 
             try {
-                // ★ 通过 API 获取该作品的精确已看剧集集合
                 const watchedSet = await fetchWatchedEpisodes(username, item.subject_id);
 
                 const Info = await getAnimeByurl(subjectUrl, { watchedSet });
@@ -831,7 +1086,9 @@ async function bangumi(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
     pageNum = 1;
 
-    await ensureAuthenticated();
+    // ★ 统一凭据保障：普通模式只要求 Token 有效即可（Cookie 作为加分项）
+    const credOk = await ensureCredentials(false);
+    if (!credOk) return;
 
     const name = await QuickAdd.quickAddApi.inputPrompt("输入查询的作品名称");
     if (!name || name.trim() === "") throw new Error("没有输入任何内容");
@@ -871,7 +1128,6 @@ async function bangumi(QuickAddInstance) {
                 sourceName = "漫画";
                 break;
             case "anime":
-                // ★ 普通模式也尝试用 API 精确获取已看（如果 Token 存在）
                 {
                     let watchedSet = null;
                     if (USER_TOKEN && USER_TOKEN.trim()) {
@@ -987,13 +1243,6 @@ async function searchBangumi(url) {
     return itemList.length > 1 ? itemList : null;
 }
 
-/**
- * 获取动画信息
- * @param {string} url - 动画详情页地址
- * @param {object} [options={}] - 可选参数
- * @param {Set<string>} [options.watchedSet] - 用户已看剧集标识集合（批量模式传入）
- * @returns {Promise<object>} 动画信息对象
- */
 async function getAnimeByurl(url, options = {}) {
     console.log("URL:" + url);
     const page = await requestGet(url);
@@ -1094,14 +1343,6 @@ async function getAnimeByurl(url, options = {}) {
     return finalInfo;
 }
 
-/**
- * 封装目录信息
- * @param {string} detailUrl - 剧集列表页地址（.../ep）
- * @param {Set<string>} [watchedSet=null] - 用户已看剧集标识集合（API 结果）
- *   - 传入且非空：用 API 结果判断（Token 模式推荐）
- *   - 未传或为空：回退到 HTML <small> 判断（Cookie 模式）
- * @returns {Promise<{paraList: string[], opedList: string[]}>}
- */
 async function getParagraph(detailUrl, watchedSet = null) {
     const detailPage = await requestGet(detailUrl);
     if (!detailPage) {
@@ -1144,9 +1385,6 @@ async function getParagraph(detailUrl, watchedSet = null) {
         const secondSpanText = spans.length >= 1 ? spans[spans.length - 1].textContent.trim() : '';
         const cnTitle = secondSpanText ? secondSpanText.trim() : "";
 
-        // ★ 双分支判断已看：
-        //   1. 若传入了 API 已看集合，优先用它（Token 模式）
-        //   2. 否则回退到 HTML <small>（Cookie 模式）
         let alreadyView = false;
         if (watchedSet && watchedSet.size > 0) {
             if ((epId && watchedSet.has(String(epId))) ||
