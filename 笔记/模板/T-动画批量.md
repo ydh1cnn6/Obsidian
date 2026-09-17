@@ -32,7 +32,7 @@ bangumi_hash: "{{VALUE:bangumi_hash}}"
 | 字幕 | {{VALUE:collectionTypeName}}   |
 | 状态 | {{VALUE:collectionTypeName}} |
 | 评分 | {{VALUE:score}} |
-| 存储 |  [<%mediaInfo %>](file:///E:/luvian114/Videos/追番) |
+| 存储 |  - |
 
 > [!abstract]+ **简介**
 > {{VALUE:summary}}

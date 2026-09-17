@@ -1,8 +1,8 @@
 ---
-笔记ID: "20260917105358"
+笔记ID: "20260917164142"
 别名: "世界舞动,The World Is Dancing,世界在起舞,世界在跳舞"
 tags: [TV,日本,漫画改,历史]
-观看状态: <% state %>
+观看状态: 想看
 作品大类: Anime
 中文名: "THE WORLD IS DANCING 世界在起舞"
 日文名: "ワールド イズ ダンシング"
@@ -14,6 +14,7 @@ Bangumi评分: " 5.4"
 集数: "13"
 具体类型: "TV"
 动画公司: "サイピク"
+bangumi_hash: "-1223977587"
 ---
 
 > [!bookinfo|noicon]+ **THE WORLD IS DANCING 世界在起舞** 
@@ -21,17 +22,17 @@ Bangumi评分: " 5.4"
 >
 | 日文名 | ワールド イズ ダンシング |
 |:------: |:------------------------------------------: |
-| 分类 | <% catego %> |
+| 分类 | TV
 | 新番 | 2026 年 7 月 | 
 | 集数 | TV 共13话 |
 | 官网 | [sh-anime.shochiku.co.jp/worldisdancing-anime/](sh-anime.shochiku.co.jp/worldisdancing-anime/)    |
 | 制作 | サイピク |
 | 导演 | 黒柳トシマサ |
 | 脚本 | 川滿佐和子 |
-| 字幕 |<% subGroup %>-<%subLanguage%>    |
-| 状态 |<% state %>|
-| 评分 | |
-| 存储 |  [<%mediaInfo %>](file:///E:/luvian114/Videos/追番) |
+| 字幕 | 想看   |
+| 状态 | 想看 |
+| 评分 |  |
+| 存储 |  - |
 
 > [!abstract]+ **简介**
 > 1374年，在南朝与北朝两个朝廷持续争斗的动乱时代，北朝的征夷大将军足利义满正一步步扩张自己的势力。
