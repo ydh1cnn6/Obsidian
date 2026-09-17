@@ -20,6 +20,7 @@
 //
 // 批量导入
 //   - 按收藏状态批量拉取动画并生成笔记
+//   - 目录选择下拉列表（记住上次选择）
 //   - 勾选页面选择要生成的作品（默认全选，支持全选/全不选/反选/上一步）
 //   - 收藏结果缓存，切换收藏类型不重复拉取
 //   - 支持中断按钮，随时停止
@@ -36,6 +37,7 @@
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
 const TOKEN_STORAGE_KEY = "bangumi_to_obsidian_access_token";
 const TOKEN_SAVED_AT_KEY = "bangumi_to_obsidian_token_saved_at";
+const FOLDER_STORAGE_KEY = "bangumi_to_obsidian_target_folder";
 
 // ========== 模板名常量 ==========
 const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
@@ -43,7 +45,7 @@ const TEMPLATE_NAME_ANIME = "Bangumi动画批量";
 // ========== 默认值常量 ==========
 const DEFAULT_SCORE_IF_EMPTY = "";
 const TOKEN_WARNING_DAYS = 30;
-const BATCH_CONCURRENCY = 4;   // ★ 并发数：直连 3-4，代理 6-8
+const BATCH_CONCURRENCY = 4;
 
 // ========== 收藏状态映射 ==========
 const COLLECTION_TYPE_MAP = {
@@ -98,6 +100,7 @@ const CONFIRM_DIALOG_ID = "bangumi-confirm-dialog";
 const MULTISELECT_DIALOG_ID = "bangumi-multiselect-dialog";
 const STATUS_DIALOG_ID = "bangumi-status-dialog";
 const PREVIEW_DIALOG_ID = "bangumi-preview-dialog";
+const FOLDER_SELECT_DIALOG_ID = "bangumi-folder-select-dialog";
 
 const notice = (msg) => new Notice(msg, 5000);
 const log = (msg) => console.log(msg);
@@ -1428,7 +1431,7 @@ class BangumiStatusDialog {
 class BangumiPreviewDialog {
     constructor(options = {}) {
         this.title = options.title || '准备生成笔记';
-        this.items = options.items || [];   // { label, action }
+        this.items = options.items || [];
         this.resolveFn = null;
         this.resolved = false;
         this.overlay = null;
@@ -1583,6 +1586,188 @@ class BangumiPreviewDialog {
             sec.appendChild(row);
         }
         return sec;
+    }
+
+    _makeButton(text, onClick, bgColor) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 8px 20px', 'cursor: pointer',
+            'border-radius: 6px',
+            `background: ${bgColor}`,
+            'color: #fff',
+            'border: none',
+            'font-size: 0.92em',
+        ].join(';');
+        btn.onmouseenter = () => { btn.style.opacity = '0.88'; };
+        btn.onmouseleave = () => { btn.style.opacity = '1'; };
+        btn.onclick = onClick;
+        return btn;
+    }
+}
+
+// ============================== ★ 目录选择弹窗 ==============================
+class BangumiFolderSelectDialog {
+    constructor(options = {}) {
+        this.title = options.title || '选择输出目录';
+        this.folders = options.folders || [];
+        this.defaultValue = options.defaultValue || '';
+        this.resolveFn = null;
+        this.resolved = false;
+        this.overlay = null;
+        this.escHandler = null;
+    }
+
+    openAndWait() {
+        return new Promise((resolve) => {
+            this.resolveFn = resolve;
+            this.render();
+        });
+    }
+
+    finish(result) {
+        if (this.resolved) return;
+        this.resolved = true;
+        if (this.escHandler) {
+            document.removeEventListener('keydown', this.escHandler);
+            this.escHandler = null;
+        }
+        if (this.overlay && this.overlay.parentNode) {
+            this.overlay.parentNode.removeChild(this.overlay);
+        }
+        if (this.resolveFn) this.resolveFn(result);
+    }
+
+    render() {
+        const old = document.getElementById(FOLDER_SELECT_DIALOG_ID);
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = FOLDER_SELECT_DIALOG_ID;
+        overlay.style.cssText = [
+            'position: fixed', 'inset: 0', 'z-index: 999998',
+            'background: rgba(0,0,0,0.55)',
+            'display: flex', 'align-items: center', 'justify-content: center',
+            'font-family: system-ui, -apple-system, "Segoe UI", sans-serif',
+        ].join(';');
+        this.overlay = overlay;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = [
+            'background: var(--background-primary, #fff)',
+            'color: var(--text-normal, #333)',
+            'border-radius: 10px',
+            'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
+            'padding: 22px 26px',
+            'width: 520px',
+            'max-width: 92vw',
+        ].join(';');
+        overlay.appendChild(panel);
+
+        const h2 = document.createElement('h2');
+        h2.textContent = '📁 ' + this.title;
+        h2.style.cssText = 'margin: 0 0 10px 0;';
+        panel.appendChild(h2);
+
+        const info = document.createElement('p');
+        info.textContent = '批量生成的笔记将保存到此目录（目录不存在时 QuickAdd 会自动创建）。';
+        info.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 16px 0; line-height: 1.5;';
+        panel.appendChild(info);
+
+        // 下拉选择
+        const selectLabel = document.createElement('div');
+        selectLabel.textContent = '选择目录：';
+        selectLabel.style.cssText = 'font-weight: 600; margin-bottom: 6px;';
+        panel.appendChild(selectLabel);
+
+        const select = document.createElement('select');
+        select.style.cssText = [
+            'width: 100%', 'padding: 8px 10px',
+            'border-radius: 6px',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'background: var(--background-modifier-form-field, var(--background-primary, #fff))',
+            'color: var(--text-normal, #333)',
+            'font-size: 0.92em',
+            'margin-bottom: 16px',
+            'box-sizing: border-box',
+        ].join(';');
+
+        const rootOpt = document.createElement('option');
+        rootOpt.value = "";
+        rootOpt.textContent = "（Vault 根目录）";
+        select.appendChild(rootOpt);
+
+        for (const f of this.folders) {
+            const opt = document.createElement('option');
+            opt.value = f;
+            opt.textContent = f;
+            select.appendChild(opt);
+        }
+
+        const initialValue = (this.defaultValue || "").replace(/^\/+|\/+$/g, '');
+        const hasOption = Array.from(select.options).some(o => o.value === initialValue);
+        select.value = hasOption ? initialValue : "";
+
+        panel.appendChild(select);
+
+        // 手动输入
+        const inputLabel = document.createElement('div');
+        inputLabel.textContent = '或手动输入路径：';
+        inputLabel.style.cssText = 'font-weight: 600; margin-bottom: 6px;';
+        panel.appendChild(inputLabel);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = select.value;
+        input.placeholder = "例如：ACG/Bangumi（留空 = 根目录）";
+        input.style.cssText = [
+            'width: 100%', 'padding: 8px 10px',
+            'border-radius: 6px',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'background: var(--background-modifier-form-field, var(--background-primary, #fff))',
+            'color: var(--text-normal, #333)',
+            'font-size: 0.92em',
+            'box-sizing: border-box',
+        ].join(';');
+        panel.appendChild(input);
+
+        // 双向同步
+        select.onchange = () => { input.value = select.value; };
+        input.oninput = () => {
+            const v = input.value;
+            if (Array.from(select.options).some(o => o.value === v)) {
+                select.value = v;
+            }
+        };
+
+        // 按钮
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;';
+
+        const cancelBtn = this._makeButton('❌ 取消', () => this.finish(null), '#757575');
+        btnRow.appendChild(cancelBtn);
+
+        const confirmBtn = this._makeButton('✅ 确定', () => {
+            const result = (input.value || "").trim().replace(/^\/+|\/+$/g, '');
+            this.finish(result);
+        }, '#4caf50');
+        confirmBtn.style.fontWeight = '600';
+        btnRow.appendChild(confirmBtn);
+
+        panel.appendChild(btnRow);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.finish(null);
+        });
+        this.escHandler = (e) => {
+            if (e.key === 'Escape') this.finish(null);
+        };
+        document.addEventListener('keydown', this.escHandler);
+
+        document.body.appendChild(overlay);
+        setTimeout(() => {
+            try { input.focus(); } catch (e) {}
+        }, 50);
     }
 
     _makeButton(text, onClick, bgColor) {
@@ -1956,6 +2141,53 @@ async function readExistingHash(targetPath) {
     }
 }
 
+// ============================== ★ 目录工具 ==============================
+
+/**
+ * 获取 vault 里所有目录路径（跳过根目录和隐藏目录）
+ */
+function getAllFolders() {
+    const folders = [];
+    try {
+        const all = app.vault.getAllLoadedFiles();
+        for (const f of all) {
+            if (!f || typeof f.path !== 'string') continue;
+            // TFolder 有 children 属性，TFile 没有
+            if (f.children === undefined) continue;
+            if (!f.path) continue;
+            if (f.path.startsWith('.')) continue;
+            folders.push(f.path);
+        }
+    } catch (e) {
+        log(`获取目录列表失败: ${e.message}`);
+    }
+    folders.sort();
+    return folders;
+}
+
+/**
+ * 弹出目录选择器
+ * @returns {Promise<string|null>} 选中的目录路径；null 表示用户取消
+ */
+async function selectTargetFolder() {
+    const folders = getAllFolders();
+    const lastUsed = (() => {
+        try { return app?.loadLocalStorage?.(FOLDER_STORAGE_KEY) || ""; }
+        catch (e) { return ""; }
+    })();
+
+    const dialog = new BangumiFolderSelectDialog({
+        folders,
+        defaultValue: lastUsed,
+    });
+    const result = await dialog.openAndWait();
+
+    if (result === null) return null;
+
+    try { app?.saveLocalStorage?.(FOLDER_STORAGE_KEY, result); } catch (e) {}
+    return result;
+}
+
 // ============================== 批量中断按钮 ==============================
 function showAbortButton() {
     const old = document.getElementById(ABORT_BTN_ID);
@@ -2095,9 +2327,15 @@ async function bangumiBatch(QuickAddInstance) {
         return;
     }
 
-    // ===== 阶段 2：并发预拉取 + 分类 =====
-    const TARGET_FOLDER = "";   // ★ 改成你的模板实际输出目录，例如 "动漫"、"ACG/Bangumi"
+    // ★ 选择输出目录
+    const TARGET_FOLDER = await selectTargetFolder();
+    if (TARGET_FOLDER === null) {
+        new Notice("已取消，未选择输出目录。", 4000);
+        return;
+    }
+    log(`[批量] 输出目录：${TARGET_FOLDER || "（Vault 根目录）"}`);
 
+    // ===== 阶段 2：并发预拉取 + 分类 =====
     let doneCount = 0;
     let lastNoticeTime = 0;
     const prepared = new Array(chosenSubjects.length);

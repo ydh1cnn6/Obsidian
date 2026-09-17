@@ -2,7 +2,7 @@
 笔记ID: "{{DATE:YYYYMMDDHHmmss}}"
 别名: "{{VALUE:alias}}"
 tags: [{{VALUE:tags}}]
-观看状态: <% state %>
+观看状态: {{VALUE:collectionTypeName}}
 作品大类: Anime
 中文名: "{{VALUE:CN}}"
 日文名: "{{VALUE:JP}}"
@@ -14,6 +14,7 @@ Bangumi评分: " {{VALUE:rating}}"
 集数: "{{VALUE:episode}}"
 具体类型: "{{VALUE:type}}"
 动画公司: "{{VALUE:AnimeMake}}"
+bangumi_hash: "{{VALUE:bangumi_hash}}"
 ---
 
 > [!bookinfo|noicon]+ **{{VALUE:CN}}** 
@@ -21,16 +22,16 @@ Bangumi评分: " {{VALUE:rating}}"
 >
 | 日文名 | {{VALUE:JP}} |
 |:------: |:------------------------------------------: |
-| 分类 | <% catego %> |
+| 分类 | {{VALUE:type}}
 | 新番 | {{VALUE:year}} 年 {{VALUE:month}} 月 | 
 | 集数 | {{VALUE:type}} 共{{VALUE:episode}}话 |
 | 官网 | [{{VALUE:website}}]({{VALUE:website}})    |
 | 制作 | {{VALUE:AnimeMake}} |
 | 导演 | {{VALUE:director}} |
 | 脚本 | {{VALUE:staff}} |
-| 字幕 |<% subGroup %>-<%subLanguage%>    |
-| 状态 |<% state %>|
-| 评分 | {{VALUE:score}}|
+| 字幕 | {{VALUE:collectionTypeName}}   |
+| 状态 | {{VALUE:collectionTypeName}} |
+| 评分 | {{VALUE:score}} |
 | 存储 |  [<%mediaInfo %>](file:///E:/luvian114/Videos/追番) |
 
 > [!abstract]+ **简介**
