@@ -14,10 +14,9 @@
 //modify: HTML 页面请求只走 Cookie，API 请求只走 Token（修复 400）
 //modify: Token 认证成功后保留 Cookie，使 HTML 页面请求亦可用作兜底
 //modify: getParagraph 双分支：优先 API 已看集合，无则回退 HTML <small>
-//modify: ★ Token 有效但 Cookie 为空时主动提示补 Cookie；新增 updateCookieOnly / updateTokenOnly 独立命令
-//modify: ★ 批量导入前置校验：Token 和 Cookie 必须同时可用，否则弹出修复选择或取消
-//modify: ★ 新增 promptAndUpdateCredentials() 一体化凭据界面（Token + Cookie 同时输入/校验/保存）
-//modify: ★ 普通和批量导入开始前统一走 ensureCredentials() 凭据保障流程
+//modify: ★ 纯 DOM 凭据弹窗（不依赖 obsidian 模块，兼容 QuickAdd 沙箱）
+//modify: ★ 普通和批量导入前静默校验，两项都通过不弹窗；任一失败才弹窗
+//modify: ★ 右上角 Notice 显示校验结果
 
 // ========== 存储键名 ==========
 const COOKIE_STORAGE_KEY = "bangumi_to_obsidian_user_cookie";
@@ -50,9 +49,7 @@ const COLLECTION_LABEL_TO_TYPE = {
 let USER_COOKIE = (() => {
     try {
         const saved = app?.loadLocalStorage?.(COOKIE_STORAGE_KEY);
-        if (saved && typeof saved === "string" && saved.trim()) {
-            return saved.trim();
-        }
+        if (saved && typeof saved === "string" && saved.trim()) return saved.trim();
     } catch (e) {}
     return ``;
 })();
@@ -60,9 +57,7 @@ let USER_COOKIE = (() => {
 let USER_TOKEN = (() => {
     try {
         const saved = app?.loadLocalStorage?.(TOKEN_STORAGE_KEY);
-        if (saved && typeof saved === "string" && saved.trim()) {
-            return saved.trim();
-        }
+        if (saved && typeof saved === "string" && saved.trim()) return saved.trim();
     } catch (e) {}
     return "";
 })();
@@ -80,6 +75,7 @@ let TOKEN_SAVED_AT = (() => {
 let USER_NAME = "";
 let BATCH_ABORT = false;
 const ABORT_BTN_ID = "bangumi-batch-abort-btn";
+const CRED_DIALOG_ID = "bangumi-credentials-dialog";
 
 const notice = (msg) => new Notice(msg, 5000);
 const log = (msg) => console.log(msg);
@@ -148,12 +144,8 @@ async function requestGet(url, customHeaders = null) {
 async function requestGetJson(url) {
     const raw = await requestGet(url, { "Accept": "application/json" });
     if (!raw) return null;
-    try {
-        return JSON.parse(raw);
-    } catch (e) {
-        log(`JSON 解析失败: ${e.message}`);
-        return null;
-    }
+    try { return JSON.parse(raw); }
+    catch (e) { log(`JSON 解析失败: ${e.message}`); return null; }
 }
 
 function parseHtmlToDom(html) {
@@ -193,43 +185,24 @@ async function validateAccessToken(token) {
     }
 }
 
-async function checkBangumiLogin() {
-    if (USER_TOKEN && USER_TOKEN.trim()) {
-        const username = await validateAccessToken(USER_TOKEN);
-        if (username) {
-            log(`Token 认证成功，用户: ${username}`);
-            return true;
-        }
-        log("Token 已失效，将回退到 Cookie 登录流程");
-        new Notice("Access Token 已失效，将回退到 Cookie 登录流程。", 4000);
-        clearPersistedToken();
-        USER_TOKEN = "";
-        USER_NAME = "";
-    }
-
-    const html = await requestGet("https://bgm.tv/");
-    if (!html) return false;
-    const doc = parseHtmlToDom(html);
-    return !!doc.querySelector('#badgeUserPanel') && !doc.querySelector('a[href="/login"]');
-}
-
 async function checkCookieLoginOnly() {
     if (!USER_COOKIE || !USER_COOKIE.trim()) return false;
+    return await checkCookieLoginTemp(USER_COOKIE);
+}
+
+async function checkCookieLoginTemp(cookieStr) {
+    if (!cookieStr || !cookieStr.trim()) return false;
     try {
         const res = await request({
             url: "https://bgm.tv/",
             method: "GET",
             cache: "no-cache",
-            headers: {
-                ...COMMON_HEADERS,
-                "Cookie": USER_COOKIE,
-            },
+            headers: { ...COMMON_HEADERS, "Cookie": cookieStr },
         });
         if (!res) return false;
         const doc = parseHtmlToDom(res);
         const hasPanel = !!doc.querySelector('#badgeUserPanel');
         const hasLoginLink = !!doc.querySelector('a[href="/login"]');
-        log(`[Cookie校验] badgeUserPanel=${hasPanel}, loginLink=${hasLoginLink}`);
         return hasPanel && !hasLoginLink;
     } catch (e) {
         log(`Cookie 校验失败: ${e.message}`);
@@ -242,9 +215,7 @@ async function openBangumiLoginPage() {
     try {
         const { shell } = require('electron');
         await shell.openExternal(loginUrl);
-    } catch (e) {
-        window.open(loginUrl, '_blank');
-    }
+    } catch (e) { window.open(loginUrl, '_blank'); }
 }
 
 async function openBangumiTokenPage() {
@@ -252,9 +223,7 @@ async function openBangumiTokenPage() {
     try {
         const { shell } = require('electron');
         await shell.openExternal(tokenUrl);
-    } catch (e) {
-        window.open(tokenUrl, '_blank');
-    }
+    } catch (e) { window.open(tokenUrl, '_blank'); }
 }
 
 function isBangumiRelevantCookie(name) {
@@ -284,26 +253,15 @@ function sanitizeCookieInput(raw) {
 
 function isValidBangumiCookie(cookieStr) {
     if (!cookieStr) return false;
-    const requiredKeys = ["chii_auth"];
-    return requiredKeys.every(k => cookieStr.includes(k + "="));
+    return cookieStr.includes("chii_auth=");
 }
 
-/**
- * 估算 Token 剩余天数
- * Bangumi PAT 有效期约 1 年（365 天）
- * 由于 API 不返回过期时间，根据保存时间推算
- * @returns {string} 人类可读的剩余天数描述
- */
 function getTokenExpiryEstimate() {
-    if (!TOKEN_SAVED_AT || !USER_TOKEN || !USER_TOKEN.trim()) {
-        return "未记录保存时间";
-    }
+    if (!TOKEN_SAVED_AT || !USER_TOKEN || !USER_TOKEN.trim()) return "未记录保存时间";
     const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
     const elapsed = Date.now() - TOKEN_SAVED_AT;
     const remaining = ONE_YEAR_MS - elapsed;
-    if (remaining <= 0) {
-        return "⚠️ 估算已过期（超过 1 年）";
-    }
+    if (remaining <= 0) return "⚠️ 估算已过期（超过 1 年）";
     const days = Math.floor(remaining / (24 * 60 * 60 * 1000));
     const savedDate = new Date(TOKEN_SAVED_AT);
     const expiryDate = new Date(TOKEN_SAVED_AT + ONE_YEAR_MS);
@@ -312,23 +270,13 @@ function getTokenExpiryEstimate() {
 
 // ============================== 凭据持久化 ==============================
 function persistCookie(cookieStr) {
-    try {
-        if (app?.saveLocalStorage) {
-            app.saveLocalStorage(COOKIE_STORAGE_KEY, cookieStr);
-        }
-    } catch (e) {
-        log(`保存 Cookie 到本地存储失败：${e.message}`);
-    }
+    try { if (app?.saveLocalStorage) app.saveLocalStorage(COOKIE_STORAGE_KEY, cookieStr); }
+    catch (e) { log(`保存 Cookie 失败：${e.message}`); }
 }
 
 function clearPersistedCookie() {
-    try {
-        if (app?.saveLocalStorage) {
-            app.saveLocalStorage(COOKIE_STORAGE_KEY, "");
-        }
-    } catch (e) {
-        log(`清除本地存储 Cookie 失败：${e.message}`);
-    }
+    try { if (app?.saveLocalStorage) app.saveLocalStorage(COOKIE_STORAGE_KEY, ""); }
+    catch (e) { log(`清除 Cookie 失败：${e.message}`); }
 }
 
 function persistToken(token) {
@@ -338,9 +286,7 @@ function persistToken(token) {
             app.saveLocalStorage(TOKEN_SAVED_AT_KEY, String(Date.now()));
             TOKEN_SAVED_AT = Date.now();
         }
-    } catch (e) {
-        log(`保存 Token 到本地存储失败：${e.message}`);
-    }
+    } catch (e) { log(`保存 Token 失败：${e.message}`); }
 }
 
 function clearPersistedToken() {
@@ -350,9 +296,7 @@ function clearPersistedToken() {
             app.saveLocalStorage(TOKEN_SAVED_AT_KEY, "");
             TOKEN_SAVED_AT = 0;
         }
-    } catch (e) {
-        log(`清除本地存储 Token 失败：${e.message}`);
-    }
+    } catch (e) { log(`清除 Token 失败：${e.message}`); }
 }
 
 // ============================== 剪贴板读取 ==============================
@@ -367,221 +311,356 @@ function readClipboardTextSync() {
     return "";
 }
 
-async function readClipboardTextAsync() {
-    const syncText = readClipboardTextSync();
-    if (syncText) return syncText;
-    try {
-        if (navigator?.clipboard?.readText) {
-            const t = await navigator.clipboard.readText();
-            if (t && t.trim()) return t.trim();
-        }
-    } catch (e) {}
-    return "";
-}
-
-// ============================== ★ 核心：一体化凭据界面 ==============================
-/**
- * 一体化凭据界面
- * 使用 QuickAdd requestInputs 在一个表单中同时收集 Token 和 Cookie
- * 已保存的值会自动填充，用户可直接点「下一步」保存
- * @param {boolean} [requireBoth=true] - 是否要求 Token 和 Cookie 都有效
- * @returns {Promise<boolean>} true=凭据可用，false=用户取消
- */
-async function promptAndUpdateCredentials(requireBoth = true) {
-    // 读取剪贴板，尝试自动识别
-    const clipboardText = await readClipboardTextAsync();
-    let clipboardToken = "";
-    let clipboardCookie = "";
-
-    if (clipboardText) {
-        const cleanedCookie = sanitizeCookieInput(clipboardText);
-        if (isValidBangumiCookie(cleanedCookie)) {
-            clipboardCookie = cleanedCookie;
-        } else if (clipboardText.length > 20 && !clipboardText.includes(' ') &&
-                   !clipboardText.includes('=') && !clipboardText.includes(';')) {
-            clipboardToken = clipboardText.trim();
-        }
+// ============================== ★ 纯 DOM 凭据弹窗 ==============================
+class BangumiCredentialsDialog {
+    constructor(options = {}) {
+        this.requireBoth = options.requireBoth !== false;
+        this.resolveFn = null;
+        this.resolved = false;
+        this.tokenValid = false;
+        this.cookieValid = false;
+        this.tokenUsername = "";
+        this.overlay = null;
+        this.tokenInputEl = null;
+        this.cookieInputEl = null;
+        this.tokenStatusEl = null;
+        this.cookieStatusEl = null;
+        this.escHandler = null;
     }
 
-    // 预填已有值
-    const defaultToken = clipboardToken || USER_TOKEN || "";
-    const defaultCookie = clipboardCookie || USER_COOKIE || "";
+    openAndWait() {
+        return new Promise((resolve) => {
+            this.resolveFn = resolve;
+            this.render();
+        });
+    }
 
-    // 状态提示
-    const tokenStatus = defaultToken
-        ? (USER_TOKEN ? `已保存 | ${getTokenExpiryEstimate()}` : "剪贴板检测到")
-        : "未设置";
-    const cookieStatus = defaultCookie
-        ? (USER_COOKIE ? "已保存" : "剪贴板检测到")
-        : "未设置";
+    finish(result) {
+        if (this.resolved) return;
+        this.resolved = true;
+        if (this.escHandler) {
+            document.removeEventListener('keydown', this.escHandler);
+            this.escHandler = null;
+        }
+        if (this.overlay && this.overlay.parentNode) {
+            this.overlay.parentNode.removeChild(this.overlay);
+        }
+        if (this.resolveFn) this.resolveFn(result);
+    }
 
-    let formValues;
-    try {
-        formValues = await QuickAdd.quickAddApi.requestInputs([
-            {
-                id: "token",
-                label: "Access Token",
-                type: "text",
-                placeholder: "在此粘贴 Access Token（在 next.bgm.tv/demo/access-token 生成）",
-                defaultValue: defaultToken,
-                description: `状态：${tokenStatus}`,
-            },
-            {
-                id: "cookie",
-                label: "Cookie",
-                type: "textarea",
-                placeholder: "chii_auth=...; chii_sec_id=...; chii_sid=...",
-                defaultValue: defaultCookie,
-                description: `状态：${cookieStatus}`,
-            },
-            {
-                id: "action",
-                label: "操作",
-                type: "dropdown",
-                options: ["✅ 下一步（校验并保存）", "🔍 仅校验不保存", "❌ 取消"],
-                defaultValue: "✅ 下一步（校验并保存）",
-                description: "校验通过后自动保存并继续",
-            },
-        ]);
-    } catch (e) {
-        // 用户关闭了表单
-        new Notice("凭据输入已取消。", 4000);
-        log("[凭据界面] 用户关闭表单");
+    render() {
+        const old = document.getElementById(CRED_DIALOG_ID);
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = CRED_DIALOG_ID;
+        overlay.style.cssText = [
+            'position: fixed', 'inset: 0', 'z-index: 999998',
+            'background: rgba(0,0,0,0.55)',
+            'display: flex', 'align-items: center', 'justify-content: center',
+            'font-family: system-ui, -apple-system, "Segoe UI", sans-serif',
+        ].join(';');
+        this.overlay = overlay;
+
+        const panel = document.createElement('div');
+        panel.style.cssText = [
+            'background: var(--background-primary, #fff)',
+            'color: var(--text-normal, #333)',
+            'border-radius: 10px',
+            'box-shadow: 0 8px 30px rgba(0,0,0,.35)',
+            'padding: 22px 26px',
+            'width: 620px',
+            'max-width: 92vw',
+            'max-height: 88vh',
+            'overflow-y: auto',
+        ].join(';');
+        overlay.appendChild(panel);
+
+        const h2 = document.createElement('h2');
+        h2.textContent = '🔐 Bangumi 凭据';
+        h2.style.cssText = 'margin: 0 0 12px 0;';
+        panel.appendChild(h2);
+
+        const info = document.createElement('p');
+        info.textContent = this.requireBoth
+            ? '需要 Token 和 Cookie 同时有效才能继续。'
+            : '需要至少一项凭据有效（建议两者都配置）。';
+        info.style.cssText = 'color: var(--text-muted, #888); font-size: 0.9em; margin: 0 0 16px 0;';
+        panel.appendChild(info);
+
+        // ---- Token 区 ----
+        const tokenSec = document.createElement('div');
+        tokenSec.style.marginBottom = '16px';
+        const tokenLabel = document.createElement('div');
+        tokenLabel.textContent = 'Access Token';
+        tokenLabel.style.cssText = 'font-weight: 600; margin-bottom: 6px;';
+        tokenSec.appendChild(tokenLabel);
+
+        const tokenRow = document.createElement('div');
+        tokenRow.style.cssText = 'display: flex; gap: 8px;';
+
+        const tokenInput = document.createElement('input');
+        tokenInput.type = 'text';
+        tokenInput.value = USER_TOKEN || '';
+        tokenInput.placeholder = '在此粘贴 Access Token';
+        tokenInput.style.cssText = [
+            'flex: 1', 'padding: 7px 9px',
+            'border-radius: 6px',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'background: var(--background-modifier-form-field, var(--background-primary, #fff))',
+            'color: var(--text-normal, #333)',
+            'font-size: 0.9em',
+        ].join(';');
+        this.tokenInputEl = tokenInput;
+        tokenRow.appendChild(tokenInput);
+
+        const tokenCheckBtn = this._makeButton('校验', async () => await this.checkToken(), '#2196f3');
+        tokenRow.appendChild(tokenCheckBtn);
+
+        const tokenOpenBtn = this._makeButton('🔗 获取', () => openBangumiTokenPage(), '#607d8b');
+        tokenRow.appendChild(tokenOpenBtn);
+
+        tokenSec.appendChild(tokenRow);
+
+        const tokenStatus = document.createElement('div');
+        tokenStatus.style.cssText = 'font-size: 0.85em; margin-top: 5px; color: var(--text-muted, #888);';
+        tokenStatus.textContent = USER_TOKEN
+            ? `已保存 | ${getTokenExpiryEstimate()}`
+            : '未设置';
+        this.tokenStatusEl = tokenStatus;
+        tokenSec.appendChild(tokenStatus);
+
+        panel.appendChild(tokenSec);
+
+        // ---- Cookie 区 ----
+        const cookieSec = document.createElement('div');
+        cookieSec.style.marginBottom = '16px';
+        const cookieLabel = document.createElement('div');
+        cookieLabel.textContent = 'Cookie';
+        cookieLabel.style.cssText = 'font-weight: 600; margin-bottom: 6px;';
+        cookieSec.appendChild(cookieLabel);
+
+        const cookieRow = document.createElement('div');
+        cookieRow.style.cssText = 'display: flex; gap: 8px; align-items: flex-start;';
+
+        const cookieInput = document.createElement('textarea');
+        cookieInput.value = USER_COOKIE || '';
+        cookieInput.placeholder = 'chii_auth=...; chii_sec_id=...; chii_sid=...';
+        cookieInput.style.cssText = [
+            'flex: 1', 'padding: 7px 9px', 'min-height: 76px',
+            'border-radius: 6px',
+            'border: 1px solid var(--background-modifier-border, #ccc)',
+            'background: var(--background-modifier-form-field, var(--background-primary, #fff))',
+            'color: var(--text-normal, #333)',
+            'font-family: monospace', 'font-size: 0.82em',
+            'resize: vertical',
+        ].join(';');
+        this.cookieInputEl = cookieInput;
+        cookieRow.appendChild(cookieInput);
+
+        const cookieBtnCol = document.createElement('div');
+        cookieBtnCol.style.cssText = 'display: flex; flex-direction: column; gap: 6px;';
+
+        const cookieCheckBtn = this._makeButton('校验', async () => await this.checkCookie(), '#2196f3');
+        cookieBtnCol.appendChild(cookieCheckBtn);
+
+        const cookieOpenBtn = this._makeButton('🔗 获取', () => openBangumiLoginPage(), '#607d8b');
+        cookieBtnCol.appendChild(cookieOpenBtn);
+
+        cookieRow.appendChild(cookieBtnCol);
+        cookieSec.appendChild(cookieRow);
+
+        const cookieStatus = document.createElement('div');
+        cookieStatus.style.cssText = 'font-size: 0.85em; margin-top: 5px; color: var(--text-muted, #888);';
+        cookieStatus.textContent = USER_COOKIE ? '已保存' : '未设置';
+        this.cookieStatusEl = cookieStatus;
+        cookieSec.appendChild(cookieStatus);
+
+        panel.appendChild(cookieSec);
+
+        // ---- 按钮区 ----
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'margin-top: 22px; display: flex; justify-content: flex-end; gap: 10px;';
+
+        const cancelBtn = this._makeButton('取消', () => this.finish(false), '#757575', true);
+        btnRow.appendChild(cancelBtn);
+
+        const saveBtn = this._makeButton('保存并继续', async () => await this.saveAndContinue(), '#4caf50', true);
+        saveBtn.style.fontWeight = '600';
+        btnRow.appendChild(saveBtn);
+
+        panel.appendChild(btnRow);
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) this.finish(false);
+        });
+
+        this.escHandler = (e) => {
+            if (e.key === 'Escape') this.finish(false);
+        };
+        document.addEventListener('keydown', this.escHandler);
+
+        document.body.appendChild(overlay);
+
+        setTimeout(() => {
+            try {
+                if (!USER_TOKEN) tokenInput.focus();
+                else if (!USER_COOKIE) cookieInput.focus();
+            } catch (e) {}
+        }, 50);
+    }
+
+    _makeButton(text, onClick, bgColor, outlined = false) {
+        const btn = document.createElement('button');
+        btn.textContent = text;
+        btn.style.cssText = [
+            'padding: 7px 14px', 'cursor: pointer',
+            'border-radius: 6px',
+            `background: ${bgColor}`,
+            'color: #fff',
+            'border: none',
+            'font-size: 0.88em',
+        ].join(';');
+        if (outlined) btn.style.padding = '7px 18px';
+        btn.onmouseenter = () => { btn.style.opacity = '0.88'; };
+        btn.onmouseleave = () => { btn.style.opacity = '1'; };
+        btn.onclick = onClick;
+        return btn;
+    }
+
+    async checkToken() {
+        const token = this.tokenInputEl.value.trim();
+        if (!token) {
+            this.tokenStatusEl.textContent = '未填写';
+            this.tokenValid = false;
+            new Notice('Token 未填写', 3000);
+            return false;
+        }
+        this.tokenStatusEl.textContent = '正在校验…';
+        const username = await validateAccessToken(token);
+        if (username) {
+            this.tokenValid = true;
+            this.tokenUsername = username;
+            this.tokenStatusEl.textContent = `✅ 有效（用户：${username}）`;
+            new Notice(`Token 校验通过 ✅ 用户：${username}`, 4000);
+            return true;
+        }
+        this.tokenValid = false;
+        this.tokenStatusEl.textContent = '❌ 无效';
+        new Notice('Token 校验失败 ❌', 4000);
         return false;
     }
 
-    const inputToken = (formValues.token || "").trim();
-    const inputCookie = (formValues.cookie || "").trim();
-    const action = formValues.action || "✅ 下一步（校验并保存）";
-
-    if (action.includes("取消")) {
-        new Notice("操作已取消。", 4000);
+    async checkCookie() {
+        const raw = this.cookieInputEl.value.trim();
+        if (!raw) {
+            this.cookieStatusEl.textContent = '未填写';
+            this.cookieValid = false;
+            new Notice('Cookie 未填写', 3000);
+            return false;
+        }
+        const cleaned = sanitizeCookieInput(raw);
+        if (!isValidBangumiCookie(cleaned)) {
+            this.cookieStatusEl.textContent = '❌ 缺少 chii_auth';
+            this.cookieValid = false;
+            new Notice('Cookie 缺少 chii_auth 字段 ❌', 4000);
+            return false;
+        }
+        this.cookieStatusEl.textContent = '正在校验…';
+        const ok = await checkCookieLoginTemp(cleaned);
+        if (ok) {
+            this.cookieValid = true;
+            this.cookieStatusEl.textContent = '✅ 有效';
+            new Notice('Cookie 校验通过 ✅', 4000);
+            return true;
+        }
+        this.cookieValid = false;
+        this.cookieStatusEl.textContent = '❌ 无效';
+        new Notice('Cookie 校验失败 ❌', 4000);
         return false;
     }
 
-    const shouldSave = action.includes("保存");
+    async saveAndContinue() {
+        const token = this.tokenInputEl.value.trim();
+        const rawCookie = this.cookieInputEl.value.trim();
 
-    // ---------- 校验 Token ----------
-    let tokenOk = false;
-    let tokenUsername = "";
-    if (inputToken) {
-        new Notice("正在校验 Token…", 3000);
-        tokenUsername = await validateAccessToken(inputToken);
-        tokenOk = !!tokenUsername;
-    }
+        new Notice('正在校验并保存…', 2500);
 
-    // ---------- 校验 Cookie ----------
-    let cookieOk = false;
-    let tempCookie = inputCookie;
-    if (tempCookie) {
-        // 临时设置 USER_COOKIE 以便校验
-        const originalCookie = USER_COOKIE;
-        USER_COOKIE = tempCookie;
-        new Notice("正在校验 Cookie…", 3000);
-        cookieOk = await checkCookieLoginOnly();
-        // 恢复原值（如果之后要保存会重新设置）
-        USER_COOKIE = originalCookie;
-    }
-
-    // ---------- 构建结果摘要 ----------
-    const lines = [];
-    lines.push(`Token：${tokenOk ? `✅ 有效（用户：${tokenUsername}）` : (inputToken ? "❌ 无效" : "➖ 未填写")}`);
-    lines.push(`Cookie：${cookieOk ? "✅ 有效" : (inputCookie ? "❌ 无效" : "➖ 未填写")}`);
-
-    // 判断是否满足要求
-    const allGood = requireBoth ? (tokenOk && cookieOk) : (tokenOk || cookieOk);
-
-    if (allGood) {
-        // 保存
-        if (shouldSave) {
-            if (tokenOk && inputToken) {
-                USER_TOKEN = inputToken;
-                USER_NAME = tokenUsername;
-                persistToken(inputToken);
-            }
-            if (cookieOk && tempCookie) {
-                USER_COOKIE = tempCookie;
-                persistCookie(tempCookie);
-            }
-            lines.push("");
-            lines.push("💾 已保存。");
-            if (USER_TOKEN) {
-                lines.push(`Token 过期估算：${getTokenExpiryEstimate()}`);
-            }
+        if (token) {
+            const username = await validateAccessToken(token);
+            this.tokenValid = !!username;
+            if (this.tokenValid) this.tokenUsername = username;
         } else {
-            lines.push("");
-            lines.push("（仅校验，未保存）");
+            this.tokenValid = false;
         }
-        new Notice(lines.join("\n"), 6000);
-        log(`[凭据界面] 通过。tokenOk=${tokenOk} cookieOk=${cookieOk} saved=${shouldSave}`);
-        return true;
+
+        const cleanedCookie = rawCookie ? sanitizeCookieInput(rawCookie) : "";
+        if (cleanedCookie && isValidBangumiCookie(cleanedCookie)) {
+            this.cookieValid = await checkCookieLoginTemp(cleanedCookie);
+        } else {
+            this.cookieValid = false;
+        }
+
+        if (this.tokenStatusEl) {
+            this.tokenStatusEl.textContent = this.tokenValid
+                ? `✅ 有效（用户：${this.tokenUsername}）`
+                : (token ? '❌ 无效' : '未填写');
+        }
+        if (this.cookieStatusEl) {
+            this.cookieStatusEl.textContent = this.cookieValid
+                ? '✅ 有效'
+                : (rawCookie ? '❌ 无效' : '未填写');
+        }
+
+        const ok = this.requireBoth
+            ? (this.tokenValid && this.cookieValid)
+            : (this.tokenValid || this.cookieValid);
+
+        if (!ok) {
+            const msg = this.requireBoth
+                ? '需要 Token 和 Cookie 同时有效。'
+                : '需要至少一项凭据有效。';
+            new Notice(
+                `${msg}\nToken：${this.tokenValid ? '✅' : '❌'}\nCookie：${this.cookieValid ? '✅' : '❌'}`,
+                6000
+            );
+            return;
+        }
+
+        if (this.tokenValid && token) {
+            USER_TOKEN = token;
+            USER_NAME = this.tokenUsername;
+            persistToken(token);
+        }
+        if (this.cookieValid && cleanedCookie) {
+            USER_COOKIE = cleanedCookie;
+            persistCookie(cleanedCookie);
+        }
+
+        const parts = [];
+        if (this.tokenValid) parts.push(`Token ✅（${this.tokenUsername}）`);
+        if (this.cookieValid) parts.push('Cookie ✅');
+        new Notice(`凭据已保存：${parts.join(' | ')}`, 5000);
+
+        this.finish(true);
     }
-
-    // 不满足要求 → 弹出修复选项
-    lines.push("");
-    lines.push(requireBoth
-        ? "批量导入需要 Token 和 Cookie 同时有效。"
-        : "需要至少一个凭据有效。");
-    lines.push("请选择下一步操作：");
-
-    const fixOptions = [
-        { label: "🔑 重新输入 Access Token", value: "retry_token" },
-        { label: "🍪 重新输入 Cookie", value: "retry_cookie" },
-        { label: "🔑🍪 两个都重新输入", value: "retry_both" },
-        { label: "🔗 打开 Token 生成页", value: "open_token" },
-        { label: "🔗 打开 Cookie 登录页", value: "open_cookie" },
-        { label: "❌ 取消", value: "cancel" },
-    ];
-
-    const choice = await QuickAdd.quickAddApi.suggester(
-        fixOptions.map(o => o.label),
-        fixOptions.map(o => o.value)
-    );
-
-    if (!choice || choice === "cancel") {
-        new Notice("凭据未通过校验，操作已取消。", 5000);
-        return false;
-    }
-
-    if (choice === "open_token") {
-        await openBangumiTokenPage();
-        new Notice("已打开 Token 生成页。生成后回到 Obsidian 重新运行。", 8000);
-        return false;
-    }
-    if (choice === "open_cookie") {
-        await openBangumiLoginPage();
-        new Notice("已打开登录页。登录后复制 Cookie，回到 Obsidian 重新运行。", 8000);
-        return false;
-    }
-
-    // 递归重试
-    if (choice === "retry_token") {
-        // 清空 cookie 预填，强制只关注 token
-        USER_COOKIE = "";
-    } else if (choice === "retry_cookie") {
-        USER_TOKEN = "";
-    }
-    // retry_both → 都不清，表单会预填已有值
-    return promptAndUpdateCredentials(requireBoth);
 }
 
+// ============================== ★ 统一凭据保障 ==============================
 /**
- * 普通/批量导入前的统一凭据保障
- * 先尝试静默校验已有凭据；如果都有效则直接通过
- * 否则弹出一体化凭据界面
- * @param {boolean} requireBoth - 是否要求 Token 和 Cookie 都有效
- * @returns {Promise<boolean>}
+ * 静默校验现有凭据 → 右上角 Notice 显示结果
+ * ★ 只有 Token 和 Cookie 都通过才跳过弹窗
+ * 任一失败 → 弹 DOM 弹窗（弹窗内要求两者都有效）
  */
-async function ensureCredentials(requireBoth = true) {
-    // 静默校验：Token 和 Cookie 是否都已有效
+async function ensureCredentials() {
     let tokenOk = false;
     let cookieOk = false;
+    let tokenUsername = "";
 
     if (USER_TOKEN && USER_TOKEN.trim()) {
-        const username = await validateAccessToken(USER_TOKEN);
-        tokenOk = !!username;
+        tokenUsername = await validateAccessToken(USER_TOKEN);
+        tokenOk = !!tokenUsername;
         if (!tokenOk) {
-            log("Token 已失效，将弹出凭据界面");
             clearPersistedToken();
             USER_TOKEN = "";
             USER_NAME = "";
@@ -590,98 +669,54 @@ async function ensureCredentials(requireBoth = true) {
 
     if (USER_COOKIE && USER_COOKIE.trim()) {
         cookieOk = await checkCookieLoginOnly();
-        if (!cookieOk) {
-            log("Cookie 已失效");
-        }
     }
 
-    // 判断是否需要弹表单
-    const alreadyGood = requireBoth ? (tokenOk && cookieOk) : (tokenOk || cookieOk);
-    if (alreadyGood) {
-        // 已有有效凭据，给个简短提示
-        const parts = [];
-        if (tokenOk) parts.push(`Token✅（${USER_NAME}）`);
-        if (cookieOk) parts.push("Cookie✅");
-        if (USER_TOKEN) parts.push(getTokenExpiryEstimate());
-        new Notice(`凭据有效：${parts.join(" | ")}`, 4000);
-        log(`[凭据保障] 已有有效凭据，跳过输入。tokenOk=${tokenOk} cookieOk=${cookieOk}`);
+    // 右上角通知
+    const tokenPart = tokenOk ? `Token ✅（${tokenUsername}）` : "Token ❌";
+    const cookiePart = cookieOk ? "Cookie ✅" : "Cookie ❌";
+    new Notice(`凭据校验：${tokenPart} | ${cookiePart}`, 4500);
+    log(`[凭据校验] tokenOk=${tokenOk} cookieOk=${cookieOk}`);
+
+    // ★ 两项都通过才跳过弹窗
+    if (tokenOk && cookieOk) {
         return true;
     }
 
-    // 需要用户输入
-    const missing = [];
-    if (!tokenOk) missing.push("Token");
-    if (!cookieOk) missing.push("Cookie");
-    log(`[凭据保障] 缺少：${missing.join("、")}，弹出凭据界面`);
-    new Notice(`需要补充：${missing.join("、")}`, 4000);
-
-    return promptAndUpdateCredentials(requireBoth);
+    // 任一失败 → 弹窗（弹窗内要求两者都有效）
+    log("[凭据校验] 存在无效项，弹出凭据输入窗口");
+    const dialog = new BangumiCredentialsDialog({ requireBoth: true });
+    return await dialog.openAndWait();
 }
 
 // ============================== 独立命令 ==============================
 async function updateCookieOnly(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
-
     if (USER_TOKEN && USER_TOKEN.trim()) {
         const username = await validateAccessToken(USER_TOKEN);
-        if (username) {
-            USER_NAME = username;
-        } else {
-            clearPersistedToken();
-            USER_TOKEN = "";
-            USER_NAME = "";
-        }
+        if (username) USER_NAME = username;
+        else { clearPersistedToken(); USER_TOKEN = ""; USER_NAME = ""; }
     }
-
     await openBangumiLoginPage();
-    new Notice(
-        "已打开 Bangumi 登录页。\n" +
-        "登录后按 F12 → Application → Cookies → https://bgm.tv\n" +
-        "复制 chii_auth、chii_sec_id、chii_sid 等字段，回到 Obsidian 粘贴。",
-        10000
-    );
-
-    const ok = await promptAndUpdateCredentials(false); // 只要求至少一个有效
-    if (!ok) {
-        new Notice("未更新 Cookie，操作已取消。", 4000);
-        return;
-    }
-
-    const valid = await checkCookieLoginOnly();
-    if (valid) {
-        new Notice("Cookie 校验成功 ✅\nHTML 页面请求已可用。", 5000);
-    } else {
-        new Notice("Cookie 已保存，但纯 Cookie 请求未通过校验。可重新运行再试。", 8000);
-    }
+    new Notice("已打开登录页。登录后复制 Cookie 回到 Obsidian。", 8000);
+    const dialog = new BangumiCredentialsDialog({ requireBoth: false });
+    const ok = await dialog.openAndWait();
+    if (!ok) new Notice("操作已取消。", 4000);
 }
 
 async function updateTokenOnly(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
-
     if (USER_COOKIE && USER_COOKIE.trim()) {
-        new Notice("当前已有 Cookie，本次只更新 Token，Cookie 会被保留。", 4000);
+        new Notice("当前已有 Cookie，本次更新会保留。", 4000);
     }
-
     await openBangumiTokenPage();
     new Notice("已打开 Token 生成页。生成后复制令牌回到 Obsidian。", 8000);
-
-    const ok = await promptAndUpdateCredentials(false);
-    if (!ok) {
-        new Notice("未更新 Token，操作已取消。", 4000);
-        return;
-    }
-
-    new Notice(
-        `Token 已更新 ✅\n用户：${USER_NAME || "（未获取到用户名）"}\n` +
-        `过期估算：${getTokenExpiryEstimate()}\n` +
-        `Cookie 状态：${USER_COOKIE && USER_COOKIE.trim() ? "已保留" : "为空"}`,
-        6000
-    );
+    const dialog = new BangumiCredentialsDialog({ requireBoth: false });
+    const ok = await dialog.openAndWait();
+    if (!ok) new Notice("操作已取消。", 4000);
 }
 
-// ★ 保留 ensureBatchCredentials 作为兼容入口，内部调用 ensureCredentials
 async function ensureBatchCredentials() {
-    return ensureCredentials(true);
+    return ensureCredentials();
 }
 
 // ============================== 调试 ==============================
@@ -755,20 +790,11 @@ async function fetchWatchedEpisodes(username, subjectId) {
                 `/collections/${subjectId}/episodes?limit=${limit}&offset=${offset}`;
 
             const data = await requestGetJson(url);
-
-            if (!data) {
-                log(`获取已看剧集失败：API 无响应 subject=${subjectId}`);
-                break;
-            }
-            if (!Array.isArray(data.data)) {
-                log(`获取已看剧集失败：返回结构异常 subject=${subjectId}`);
-                break;
-            }
+            if (!data) { log(`获取已看剧集失败：API 无响应 subject=${subjectId}`); break; }
+            if (!Array.isArray(data.data)) { log(`获取已看剧集失败：返回结构异常 subject=${subjectId}`); break; }
 
             for (const item of data.data) {
-                const type = item.type;
-                if (type !== 2) continue;
-
+                if (item.type !== 2) continue;
                 const ep = item.episode || {};
                 if (ep.id   != null) result.add(String(ep.id));
                 if (ep.ep   != null) result.add(String(ep.ep));
@@ -824,8 +850,7 @@ async function bangumiBatch(QuickAddInstance) {
     pageNum = 1;
     BATCH_ABORT = false;
 
-    // ★ 统一凭据保障：Token 和 Cookie 都必须有效
-    const credOk = await ensureCredentials(true);
+    const credOk = await ensureCredentials();
     if (!credOk) return;
 
     const username = await getCurrentUsername();
@@ -906,7 +931,6 @@ async function bangumiBatch(QuickAddInstance) {
 
             try {
                 const watchedSet = await fetchWatchedEpisodes(username, item.subject_id);
-
                 const Info = await getAnimeByurl(subjectUrl, { watchedSet });
 
                 if (Array.isArray(item.userTags) && item.userTags.length > 0) {
@@ -971,12 +995,9 @@ function extractBaseInfo(doc, type) {
     }
 
     let summary = $("#subject_summary")?.textContent || '暂无简介';
-    const nbspReg = /&nbsp;/gm;
-    summary = summary.replace(nbspReg, "\n").trim();
-    const multiSpaceReg = /\s{4,}/gm;
-    summary = summary.replace(multiSpaceReg, "\n");
-    const multiLineReg = /\n+/g;
-    summary = summary.replace(multiLineReg, "\n");
+    summary = summary.replace(/&nbsp;/gm, "\n").trim();
+    summary = summary.replace(/\s{4,}/gm, "\n");
+    summary = summary.replace(/\n+/g, "\n");
     summary = summary || "暂无简介";
     workinginfo.summary = summary;
 
@@ -991,8 +1012,7 @@ function extractBaseInfo(doc, type) {
                 const tagNumber = numberSmall ? parseInt(numberSmall.textContent.trim(), 10) || 0 : 0;
                 return { text: tagText, number: tagNumber };
             }).filter(tag => tag.text && tag.number > 0);
-            const sortedTags = tagsWithNumber.sort((a, b) => b.number - a.number);
-            return sortedTags.map(tag => tag.text);
+            return tagsWithNumber.sort((a, b) => b.number - a.number).map(tag => tag.text);
         })()
         : [];
 
@@ -1025,11 +1045,7 @@ function parseCharacterList(doc, type) {
     const characterList = [];
     let CharacterBox, EachCharaNumber;
     CharacterBox = doc.querySelectorAll("#browserItemList > li.item");
-    if (type === "anime") {
-        EachCharaNumber = 3;
-    } else {
-        EachCharaNumber = 2;
-    }
+    EachCharaNumber = (type === "anime") ? 3 : 2;
 
     const regCharacterArray = Array.from(CharacterBox || []);
     regCharacterArray.forEach(item => {
@@ -1086,8 +1102,7 @@ async function bangumi(QuickAddInstance) {
     QuickAdd = QuickAddInstance;
     pageNum = 1;
 
-    // ★ 统一凭据保障：普通模式只要求 Token 有效即可（Cookie 作为加分项）
-    const credOk = await ensureCredentials(false);
+    const credOk = await ensureCredentials();
     if (!credOk) return;
 
     const name = await QuickAdd.quickAddApi.inputPrompt("输入查询的作品名称");
@@ -1105,18 +1120,13 @@ async function bangumi(QuickAddInstance) {
 
     let choice;
     while (true) {
-        choice = await QuickAdd.quickAddApi.suggester(
-            (obj) => obj.text,
-            searchResult
-        );
+        choice = await QuickAdd.quickAddApi.suggester((obj) => obj.text, searchResult);
         if (!choice) throw new Error("没有选择内容");
         if (choice.typeId === 8) {
             new Notice("加载下一页");
             searchResult = await searchBangumi(choice.link);
             if (!searchResult) throw new Error("找不到你搜索的内容");
-        } else {
-            break;
-        }
+        } else break;
     }
 
     let Info, sourceName;
@@ -1127,21 +1137,18 @@ async function bangumi(QuickAddInstance) {
                 new Notice("正在生成漫画笔记📚");
                 sourceName = "漫画";
                 break;
-            case "anime":
-                {
-                    let watchedSet = null;
-                    if (USER_TOKEN && USER_TOKEN.trim()) {
-                        const u = await getCurrentUsername();
-                        const m = choice.link.match(/subject\/(\d+)/);
-                        if (u && m) {
-                            watchedSet = await fetchWatchedEpisodes(u, m[1]);
-                        }
-                    }
-                    Info = await getAnimeByurl(choice.link, { watchedSet });
+            case "anime": {
+                let watchedSet = null;
+                if (USER_TOKEN && USER_TOKEN.trim()) {
+                    const u = await getCurrentUsername();
+                    const m = choice.link.match(/subject\/(\d+)/);
+                    if (u && m) watchedSet = await fetchWatchedEpisodes(u, m[1]);
                 }
+                Info = await getAnimeByurl(choice.link, { watchedSet });
                 new Notice("正在生成动画笔记🎞");
                 sourceName = "动画";
                 break;
+            }
             case "game":
                 Info = await getGameByurl(choice.link);
                 new Notice("正在生成游戏笔记🎮");
@@ -1173,18 +1180,13 @@ async function getValidScoreInput() {
             continue;
         }
         score = String(score).trim();
-        score = score.replace(/[。，、．,]/g, '.');
-        score = score.replace(/\.{2,}/g, '.');
+        score = score.replace(/[。，、．,]/g, '.').replace(/\.{2,}/g, '.');
         let scoreNum = parseFloat(score);
         if (isNaN(scoreNum) || scoreNum < 1 || scoreNum > 10) {
             new Notice("请输入1.0到10.0之间的数字!", 3000);
             continue;
         }
-        if (scoreNum === 10) {
-            score = "10.0";
-        } else {
-            score = scoreNum.toFixed(1);
-        }
+        score = scoreNum === 10 ? "10.0" : scoreNum.toFixed(1);
         break;
     }
     return score;
@@ -1219,20 +1221,12 @@ async function searchBangumi(url) {
         const info = infoElem.textContent.trim() || "无信息";
 
         if (value.includes("ico_subject_type subject_type_2")) {
-            text = `🎞️ 《${title}》 \n${info}`;
-            type = "anime";
-            typeId = 2;
+            text = `🎞️ 《${title}》 \n${info}`; type = "anime"; typeId = 2;
         } else if (value.includes("ico_subject_type subject_type_1")) {
-            text = `📚 《${title}》 \n${info}`;
-            type = "book";
-            typeId = 1;
+            text = `📚 《${title}》 \n${info}`; type = "book"; typeId = 1;
         } else if (value.includes("ico_subject_type subject_type_4")) {
-            text = `🎮 《${title}》 \n${info}`;
-            type = "game";
-            typeId = 4;
-        } else {
-            continue;
-        }
+            text = `🎮 《${title}》 \n${info}`; type = "game"; typeId = 4;
+        } else continue;
 
         const href = titleElem.getAttribute("href") || "";
         link = href.startsWith("http") ? href : `https://bgm.tv${href.replace(/^\/+/, "/")}`;
@@ -1246,18 +1240,14 @@ async function searchBangumi(url) {
 async function getAnimeByurl(url, options = {}) {
     console.log("URL:" + url);
     const page = await requestGet(url);
-    if (!page) {
-        notice("No results found.");
-        throw new Error("No results found.");
-    }
+    if (!page) { notice("No results found."); throw new Error("No results found."); }
 
     const doc = parseHtmlToDom(page);
     const $ = (s) => doc.querySelector(s);
     const $$ = (s) => doc.querySelectorAll(s);
 
     const Type = $("#headerSubject")?.getAttribute('typeof');
-    const validAnimeTypes = ["v:Movie", "v:Video"];
-    if (!validAnimeTypes.includes(Type)) {
+    if (!["v:Movie", "v:Video"].includes(Type)) {
         new Notice("您输入的作品不是动画！");
         throw new Error("Not An Anime Information Input");
     }
@@ -1301,9 +1291,7 @@ async function getAnimeByurl(url, options = {}) {
         if (monthPart && monthPart.includes("月")) {
             const month = parseInt(monthPart.split("月")[0]);
             seasonYear = year;
-            if (month === 12) {
-                seasonYear = (parseInt(year) + 1).toString();
-            }
+            if (month === 12) seasonYear = (parseInt(year) + 1).toString();
             if ([12, 1, 2].includes(month)) season = "01月新番";
             else if ([3, 4, 5].includes(month)) season = "04月新番";
             else if ([6, 7, 8].includes(month)) season = "07月新番";
@@ -1316,7 +1304,6 @@ async function getAnimeByurl(url, options = {}) {
 
     const paraList = contentLists.paraList;
     const opedList = contentLists.opedList;
-
     const characterInfo = parseCharacterList(doc, "anime");
 
     const finalInfo = {
@@ -1345,14 +1332,10 @@ async function getAnimeByurl(url, options = {}) {
 
 async function getParagraph(detailUrl, watchedSet = null) {
     const detailPage = await requestGet(detailUrl);
-    if (!detailPage) {
-        notice("No results found.");
-        throw new Error("No results found.");
-    }
+    if (!detailPage) { notice("No results found."); throw new Error("No results found."); }
 
     const paraList = [];
     const opedList = [];
-
     const detailDoc = parseHtmlToDom(detailPage);
     const $$ = (s) => detailDoc.querySelectorAll(s);
     const paragraphbox = $$(".line_list li");
@@ -1361,8 +1344,7 @@ async function getParagraph(detailUrl, watchedSet = null) {
     let TypeNum = 1;
 
     paragraphbox.forEach(li => {
-        const hasCatClass = li.classList.contains('cat');
-        if (hasCatClass) {
+        if (li.classList.contains('cat')) {
             currentType = li.textContent.trim();
             TypeNum = 1;
             return;
@@ -1382,8 +1364,7 @@ async function getParagraph(detailUrl, watchedSet = null) {
         const jpTitle = titleParts.slice(1).join(' ') || "";
 
         const spans = titleElem.querySelectorAll('span');
-        const secondSpanText = spans.length >= 1 ? spans[spans.length - 1].textContent.trim() : '';
-        const cnTitle = secondSpanText ? secondSpanText.trim() : "";
+        const cnTitle = spans.length >= 1 ? (spans[spans.length - 1].textContent.trim() || "") : "";
 
         let alreadyView = false;
         if (watchedSet && watchedSet.size > 0) {
@@ -1393,21 +1374,15 @@ async function getParagraph(detailUrl, watchedSet = null) {
             }
         } else {
             const small = li.querySelector('small');
-            if (small && small.textContent.trim() !== '') {
-                alreadyView = true;
-            }
+            if (small && small.textContent.trim() !== '') alreadyView = true;
         }
 
         if (currentType === "本篇" || currentType === "正篇") {
-            let fullTitle = ``;
-            if (alreadyView) fullTitle += `- [x] `;
-            else fullTitle += `- [ ] `;
+            let fullTitle = alreadyView ? `- [x] ` : `- [ ] `;
             fullTitle += `第${episodeNum}话 ${jpTitle} ${cnTitle}`.trim();
             paraList.push(fullTitle || `- [ ] 第${episodeNum}话 无标题`);
         } else {
-            let fullTitle = ``;
-            if (alreadyView) fullTitle += `- [x] `;
-            else fullTitle += `- [ ] `;
+            let fullTitle = alreadyView ? `- [x] ` : `- [ ] `;
             fullTitle += `${currentType}-${episodeNum}: ${jpTitle}${cnTitle}`.trim();
             opedList.push(fullTitle || `${currentType}-${episodeNum}: 无标题`);
         }
@@ -1417,10 +1392,7 @@ async function getParagraph(detailUrl, watchedSet = null) {
 
 async function getComicByurl(url) {
     const page = await requestGet(url);
-    if (!page) {
-        notice("No results found.");
-        throw new Error("No results found.");
-    }
+    if (!page) { notice("No results found."); throw new Error("No results found."); }
 
     const doc = parseHtmlToDom(page);
     const $ = (s) => doc.querySelector(s);
@@ -1432,7 +1404,6 @@ async function getComicByurl(url) {
     }
 
     const workinginfo = extractBaseInfo(doc, "book");
-
     const infobox = doc.querySelectorAll("#infobox > li");
     const str = Array.from(infobox).map(li => li.innerText.trim()).join("\n");
 
@@ -1457,12 +1428,7 @@ async function getComicByurl(url) {
     infoboxFields.status = endMatch && endMatch[1].trim() ? "已完结" : "连载中";
 
     const characterInfo = parseCharacterList(doc, "book");
-
-    const finalInfo = {
-        ...workinginfo,
-        ...infoboxFields,
-        ...characterInfo
-    };
+    const finalInfo = { ...workinginfo, ...infoboxFields, ...characterInfo };
 
     for (const key in finalInfo) {
         if (!finalInfo[key] || finalInfo[key] === "null" || finalInfo[key] === "undefined") {
@@ -1474,10 +1440,7 @@ async function getComicByurl(url) {
 
 async function getGameByurl(url) {
     const page = await requestGet(url);
-    if (!page) {
-        notice("No results found.");
-        throw new Error("No results found.");
-    }
+    if (!page) { notice("No results found."); throw new Error("No results found."); }
 
     const doc = parseHtmlToDom(page);
     const $ = (s) => doc.querySelector(s);
@@ -1490,16 +1453,13 @@ async function getGameByurl(url) {
     }
 
     const workinginfo = extractBaseInfo(doc, "game");
-
     const infobox = $$("#infobox > li");
     const str = Array.from(infobox).map(li => li.innerText.trim()).join("\n");
 
     const platformMatch = /平台:\s*([\s\S]*?)(?:\s*展开\+|$)/.exec(str);
     let platform = "未知";
     if (platformMatch && platformMatch[1]) {
-        let lines = platformMatch[1].split('\n')
-            .map(line => line.trim())
-            .filter(line => line !== '');
+        let lines = platformMatch[1].split('\n').map(l => l.trim()).filter(l => l !== '');
         const firstInvalidIndex = lines.findIndex(line => line.includes(':'));
         const validPlatformLines = firstInvalidIndex > -1 ? lines.slice(0, firstInvalidIndex) : lines;
         platform = validPlatformLines.join('、') || "未知";
@@ -1527,12 +1487,7 @@ async function getGameByurl(url) {
     }
 
     const characterInfo = parseCharacterList(doc, "game");
-
-    const finalInfo = {
-        ...workinginfo,
-        ...infoboxFields,
-        ...characterInfo
-    };
+    const finalInfo = { ...workinginfo, ...infoboxFields, ...characterInfo };
 
     for (const key in finalInfo) {
         if (!finalInfo[key] || finalInfo[key] === "null" || finalInfo[key] === "undefined") {
