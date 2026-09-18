@@ -70,6 +70,7 @@
 			"type":"file",
 			"file":"笔记/首页工具/最近阅读.base",
 			"styleAttributes":{"border":"invisible"},
+			"subpath":"#最近阅读",
 			"x":-4060,
 			"y":-1365,
 			"width":280,
@@ -84,6 +85,27 @@
 			"y":-1080,
 			"width":560,
 			"height":290
+		},
+		{
+			"id":"8d17a8c2d92cace6",
+			"type":"text",
+			"text":"",
+			"styleAttributes":{"border":"dotted"},
+			"x":-4060,
+			"y":-1500,
+			"width":560,
+			"height":130
+		},
+		{
+			"id":"4d41a9a0e972232c",
+			"type":"file",
+			"file":"笔记/首页工具/分割线-美化版.md",
+			"subpath":"#^c93089",
+			"styleAttributes":{"border":"invisible"},
+			"x":-4060,
+			"y":-1500,
+			"width":560,
+			"height":120
 		}
 	],
 	"edges":[],
