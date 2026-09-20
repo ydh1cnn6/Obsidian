@@ -7,7 +7,7 @@ views:
         - "!file.path.isEmpty()"
         - "!coordinates.isEmpty()"
     mapHeight: 480
-    defaultZoom: 11
+    defaultZoom: 12.1
     maxZoom: 18
     coordinates: note.coordinates
     markerIcon: note.icon
